@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Log in - FerrisCTF{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Log in</h1>
+  {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/login">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="username">College ID</label>
+    <input id="username" name="username" value="{{ username }}" required maxlength="64" autocomplete="username" spellcheck="false" autofocus>
+    <label for="password">Password</label>
+    <input id="password" type="password" name="password" required maxlength="128" autocomplete="current-password">
+    <button type="submit">Log in</button>
+  </form>
+  <p class="hint">New here? <a href="/register">Create an account</a>.</p>
+</section>
+{% endblock %}

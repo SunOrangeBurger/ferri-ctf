@@ -75,3 +75,16 @@ Spec: FerrisCTF_Technical_Specification_v5.md
 - Open: Referrer-Policy decision, rate limiting, username charset confirmation.
 - Ops: remove ADMIN_PASSWORD from .env after first boot.
 - Next: templates, security headers, register/login/logout/admin-login routes.
+
+## Update: templates, headers, rate limiting, auth routes
+
+- Done: `templates.rs` (rust-embed + MiniJinja, startup check), `static/style.css`, templates (base, index, login, register, admin login/dashboard, error), `middleware/response.rs` (security headers, themed errors), `app.rs`, `ratelimit.rs`, `routes/{auth,pages,admin}.rs`. 47 tests expected.
+- Decision: Referrer-Policy is `same-origin` (spec: `no-referrer`) so the Origin check works. Verify in browser DevTools.
+- Decision: username format confirmed (e.g. PES2UG24AM126, stored lowercase).
+- Deviation 23: CSP adds form-action, frame-ancestors, base-uri.
+- Deviation 24: hand-rolled sliding-window rate limiter instead of tower_governor (peer IP only, IPv6 /64, 50k key cap, fails closed). `tower_governor` is unused.
+- Deviation 25: single `errors/error.html`; error pages rendered with no user context so admin 404s equal plain 404s.
+- Deviation 26: pages default to `Cache-Control: no-store`; static files `no-cache`.
+- Deviation 27: registration auto-logs-in; bad login is 401, banned is 403, rate limited is 429.
+- Open: tower_governor removal, NAT/per-IP knob, shutdown drain cap, submit/join/download limits, CSV formula guard.
+- Next: team service and onboarding, or pool/rounds/scoring (recommended first: highest-risk logic, no HTTP needed).

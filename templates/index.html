@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}FerrisCTF{% endblock %}
+{% block content %}
+<section class="card">
+  {% if user %}
+    <h1>Welcome, {{ user.display_name }}</h1>
+    <p>You are signed in as <strong>{{ user.username }}</strong>.</p>
+    <p class="hint">Team setup and challenges arrive in a later build step.</p>
+  {% else %}
+    <h1>FerrisCTF</h1>
+    <p>A capture-the-flag competition. Register with your college ID to take part.</p>
+    <p><a href="/register">Create an account</a> or <a href="/login">log in</a>.</p>
+  {% endif %}
+</section>
+{% endblock %}

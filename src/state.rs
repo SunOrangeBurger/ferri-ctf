@@ -1,4 +1,7 @@
-use crate::{config::Config, keys::Keys, passwords::Passwords};
+use crate::{
+    config::Config, keys::Keys, passwords::Passwords, ratelimit::RateLimiter,
+    templates::Templates,
+};
 use sqlx::SqlitePool;
 use std::{sync::Arc, time::Instant};
 
@@ -7,13 +10,23 @@ pub struct AppState {
     pub cfg: Config,
     pub keys: Keys,
     pub passwords: Passwords,
+    pub limiter: RateLimiter,
+    pub templates: Templates,
     pub started: Instant,
 }
 
 impl AppState {
     pub fn new(db: SqlitePool, cfg: Config) -> Arc<Self> {
         let keys = Keys::derive(&cfg.server_secret);
-        Arc::new(Self { db, cfg, keys, passwords: Passwords::new(), started: Instant::now() })
+        Arc::new(Self {
+            db,
+            cfg,
+            keys,
+            passwords: Passwords::new(),
+            limiter: RateLimiter::new(),
+            templates: Templates::new(),
+            started: Instant::now(),
+        })
     }
 }
 

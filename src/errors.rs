@@ -16,12 +16,10 @@ pub enum AppError {
     #[error("bad request: {0}")]
     BadRequest(String),
 
-    /// Not logged in. Handlers for HTML pages should redirect instead; see note below.
     #[error("unauthorized")]
     Unauthorized,
 
-    /// Logged in but not permitted, for player-facing actions only (e.g. non-captain
-    /// hitting /team/kick). Never use this for /admin/*, which must be 404.
+    /// Logged in but not permitted, for player-facing actions only. Never for /admin/*.
     #[error("forbidden: {0}")]
     Forbidden(String),
 
@@ -53,6 +51,14 @@ pub enum AppError {
 
 pub type AppResult<T> = Result<T, AppError>;
 
+/// Attached to every error response so the error-page middleware can swap the plain
+/// body for the themed page. Carries only text that is safe to show.
+#[derive(Clone, Debug)]
+pub struct PublicError {
+    pub status: StatusCode,
+    pub message: String,
+}
+
 impl AppError {
     pub fn status(&self) -> StatusCode {
         match self {
@@ -70,8 +76,8 @@ impl AppError {
         }
     }
 
-    /// Safe text for the client. For client errors we show what the handler wrote
-    /// (handlers must keep these free of secrets); for server errors, nothing specific.
+    /// Safe text for the client. Client errors show what the handler wrote (handlers must
+    /// keep these free of secrets); server errors show nothing specific.
     fn public_message(&self) -> String {
         match self {
             Self::NotFound(_) => "Not found".into(),
@@ -101,18 +107,18 @@ impl IntoResponse for AppError {
             tracing::debug!(error = %self, "request rejected");
         }
 
-        // Plain text for now. Once templates exist, 404 and 500 will render the
-        // errors/*.html pages through the standard public layout (spec 9.3).
-        let mut resp = (status, self.public_message()).into_response();
+        let message = self.public_message();
+        let mut resp = (status, message.clone()).into_response();
         resp.headers_mut().insert(
             header::CONTENT_TYPE,
             HeaderValue::from_static("text/plain; charset=utf-8"),
         );
+        // The error-page middleware replaces the plain body with the themed page.
+        resp.extensions_mut().insert(PublicError { status, message });
         resp
     }
 }
 
-// Conversions for the common failure types that aren't thiserror `#[from]` friendly.
 impl From<axum::http::header::InvalidHeaderValue> for AppError {
     fn from(e: axum::http::header::InvalidHeaderValue) -> Self {
         Self::Internal(format!("invalid header value: {e}"))

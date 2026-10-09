@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ status }} - FerrisCTF{% endblock %}
+{% block content %}
+<section class="card narrow center">
+  <h1>{{ status }}</h1>
+  <p>{{ message }}</p>
+  <p><a href="/">Back to home</a></p>
+</section>
+{% endblock %}

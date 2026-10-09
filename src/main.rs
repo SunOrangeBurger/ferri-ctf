@@ -1,5 +1,6 @@
 #![allow(dead_code)] // temporary: remove once routes use everything
 
+mod app;
 mod config;
 mod csrf;
 mod db;
@@ -7,10 +8,12 @@ mod errors;
 mod keys;
 mod middleware;
 mod passwords;
+mod ratelimit;
 mod routes;
 mod services;
 mod session;
 mod state;
+mod templates;
 
 use std::{net::SocketAddr, time::Duration};
 use tracing_subscriber::EnvFilter;
@@ -29,17 +32,19 @@ async fn main() -> anyhow::Result<()> {
     let bind_addr = cfg.bind_addr.clone();
     let state = state::AppState::new(pool, cfg);
 
-    // Fails fast (before listening) if there is no admin and no usable bootstrap env.
+    // Fail fast, before listening: broken templates, or no admin and no usable bootstrap env.
+    state.templates.check()?;
     services::auth::bootstrap_ferris(&state).await?;
 
-    // Housekeeping: drop expired sessions every 10 minutes.
+    // Housekeeping every 10 minutes: expired sessions and stale rate-limit entries.
     tokio::spawn({
-        let pool = state.db.clone();
+        let state = state.clone();
         async move {
             let mut tick = tokio::time::interval(Duration::from_secs(600));
             loop {
                 tick.tick().await;
-                match session::purge_expired(&pool).await {
+                state.limiter.purge();
+                match session::purge_expired(&state.db).await {
                     Ok(n) if n > 0 => tracing::debug!(purged = n, "expired sessions removed"),
                     Ok(_) => {}
                     Err(e) => tracing::warn!(error = %e, "session purge failed"),
@@ -48,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let app = middleware::secure(routes::router(), state.clone());
+    let app = app::build(state.clone());
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     tracing::info!(%bind_addr, "listening");
 

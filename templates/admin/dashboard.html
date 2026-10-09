@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - FerrisCTF{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Dashboard</h1>
+  <p>Signed in as <strong>{{ user.username }}</strong>.</p>
+  <p>Role: <strong>{% if user.is_ferris %}Ferris (operator){% else %}Admin{% endif %}</strong></p>
+  <p class="hint">Placeholder page. Team, score and round controls arrive in later build steps.</p>
+</section>
+{% endblock %}
