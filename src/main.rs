@@ -6,7 +6,9 @@ mod db;
 mod errors;
 mod keys;
 mod middleware;
+mod passwords;
 mod routes;
+mod services;
 mod session;
 mod state;
 
@@ -26,6 +28,9 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::connect(&cfg.database_url).await?;
     let bind_addr = cfg.bind_addr.clone();
     let state = state::AppState::new(pool, cfg);
+
+    // Fails fast (before listening) if there is no admin and no usable bootstrap env.
+    services::auth::bootstrap_ferris(&state).await?;
 
     // Housekeeping: drop expired sessions every 10 minutes.
     tokio::spawn({
