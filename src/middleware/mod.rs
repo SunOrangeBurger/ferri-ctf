@@ -20,9 +20,10 @@ pub async fn fallback() -> AppError {
 }
 
 /// Install the security stack. Order, outermost first:
-///   1. load_session: cookie -> user
-///   2. csrf_guard:   token + origin on every unsafe method, for ALL paths
-///   3. admin_gate:   404 for non-privileged callers on /admin/*
+/// 1. load_session: cookie -> user
+/// 2. csrf_guard:   token + origin on every unsafe method, for ALL paths
+/// 3. admin_gate:   404 for non-privileged callers on /admin/*
+///
 /// CSRF runs before the admin gate on purpose: an unauthenticated POST gets the same 403
 /// for /admin/x as for /anything-else, so the 404 cannot be used to probe for admin paths.
 pub fn secure(router: Router<Arc<AppState>>, state: Arc<AppState>) -> Router {

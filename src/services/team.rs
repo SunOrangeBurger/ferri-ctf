@@ -26,7 +26,7 @@ pub fn generate_join_code() -> String {
 pub fn validate_team_name(raw: &str) -> AppResult<String> {
     let name = raw.trim();
     let char_count = name.chars().count();
-    if char_count < TEAM_NAME_MIN || char_count > TEAM_NAME_MAX {
+    if !(TEAM_NAME_MIN..=TEAM_NAME_MAX).contains(&char_count) {
         return Err(AppError::BadRequest(format!(
             "Team name must be between {TEAM_NAME_MIN} and {TEAM_NAME_MAX} characters"
         )));
