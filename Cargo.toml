@@ -57,3 +57,6 @@ lto = "thin"
 codegen-units = 1
 strip = true
 # Deliberately NOT panic = "abort": one handler panic should not kill the whole event.
+# Dependencies (argon2 especially) are unusably slow unoptimized; our own code stays debuggable.
+[profile.dev.package."*"]
+opt-level = 3
