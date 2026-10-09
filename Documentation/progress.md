@@ -61,3 +61,17 @@ Spec: FerrisCTF_Technical_Specification_v5.md
 - Open: `Referrer-Policy` (spec `no-referrer` vs `same-origin`, see Origin check). Decide before the security headers layer.
 - Open: 10s shutdown drain cap, rate limiting, 404/500 templates.
 - Next: password hashing service (Argon2 + semaphore), Ferris bootstrap, register/login/logout routes.
+
+## Update: passwords and auth service
+
+- Done: `passwords.rs` (Argon2id + semaphore + dummy-hash), `services/auth.rs` (register, login, admin login, change_password, Ferris bootstrap), `state.rs` gains `passwords`. 35 tests expected.
+- Deviation 17: usernames lowercase ASCII `[a-z0-9._-]`, 3-32 chars (case-insensitive uniqueness).
+- Deviation 18: password policy 8-128 chars (spec silent); applies to Ferris bootstrap.
+- Deviation 19: Argon2id explicit params m=19456, t=2, p=1; semaphore num_cpus*2, 5s queue then 503.
+- Deviation 20: display names max 40 chars, no control/invisible/bidi characters.
+- Deviation 21: bootstrap uses one atomic INSERT, never promotes an existing account.
+- Deviation 22: banned status revealed only after the correct password; admin login for non-admins is indistinguishable from bad credentials.
+- Cargo: dev profile optimizes dependencies (argon2 is unusable unoptimized).
+- Open: Referrer-Policy decision, rate limiting, username charset confirmation.
+- Ops: remove ADMIN_PASSWORD from .env after first boot.
+- Next: templates, security headers, register/login/logout/admin-login routes.
