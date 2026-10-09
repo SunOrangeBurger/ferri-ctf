@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Manage Admins — FerrisCTF Admin{% endblock %}
+{% block content %}
+<div class="flex-between" style="margin-bottom: 1.5rem; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1 style="margin:0;">🛡️ Manage Administrators</h1>
+    <div class="hint">Ferris operator controls to grant or revoke administrative access.</div>
+  </div>
+  <div>
+    <a href="/admin/dashboard" class="btn secondary">← Back to Dashboard</a>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2>➕ Grant Admin Access</h2>
+    <p class="hint">Enter the username (college ID) of an existing registered user to promote them to administrator.</p>
+    <form method="post" action="/admin/admins/add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" required placeholder="e.g. jdoe">
+      <button type="submit" style="width:100%;">Grant Admin</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Current Administrators ({{ admins | length }})</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Role</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in admins %}
+          <tr>
+            <td>
+              <strong>{{ a.display_name }}</strong>
+              <div class="hint">@{{ a.username }}</div>
+            </td>
+            <td>
+              {% if a.is_ferris %}
+                <span class="badge easy">Ferris (Operator)</span>
+              {% else %}
+                <span class="badge secondary">Admin</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if not a.is_ferris %}
+                <form method="post" action="/admin/admins/{{ a.id }}/remove" class="inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button type="submit" class="danger" style="margin:0;padding:0.25rem 0.5rem;font-size:0.8rem;" onclick="return confirm('Revoke admin access for @{{ a.username }}?');">
+                    Revoke
+                  </button>
+                </form>
+              {% else %}
+                <span class="hint">Root</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

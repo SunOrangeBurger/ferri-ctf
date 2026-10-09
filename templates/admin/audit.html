@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — FerrisCTF Admin{% endblock %}
+{% block content %}
+<div class="flex-between" style="margin-bottom: 1.5rem; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1 style="margin:0;">📜 Audit Trail</h1>
+    <div class="hint">Chronological log of administrative interventions and event triggers.</div>
+  </div>
+  <div>
+    <a href="/admin/dashboard" class="btn secondary">← Back to Dashboard</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Admin</th>
+          <th>Action</th>
+          <th>Target</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if entries %}
+          {% for e in entries %}
+          <tr>
+            <td class="hint" style="white-space:nowrap;">{{ e.created_at }}</td>
+            <td><strong>@{{ e.admin_username }}</strong></td>
+            <td><span class="badge secondary">{{ e.action }}</span></td>
+            <td>
+              {% if e.target_type %}
+                {{ e.target_type }} {% if e.target_id %}<span class="hint">({{ e.target_id }})</span>{% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td class="hint">{{ e.details | default("—", true) }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="5" class="center hint" style="padding: 2rem;">No audit logs recorded yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

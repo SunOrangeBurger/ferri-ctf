@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Manage Teams — FerrisCTF Admin{% endblock %}
+{% block content %}
+<div class="flex-between" style="margin-bottom: 1.5rem; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1 style="margin:0;">👥 Team Management</h1>
+    <div class="hint">Inspect team state, lock/unlock rooms, force membership, and adjust scores.</div>
+  </div>
+  <div>
+    <a href="/admin/dashboard" class="btn secondary">← Back to Dashboard</a>
+  </div>
+</div>
+
+<div class="card" style="padding:1rem;">
+  <form method="get" action="/admin/teams" style="display:flex;gap:0.75rem;">
+    <input name="q" type="text" placeholder="Search team by name..." value="{{ search_query }}" style="flex:1;">
+    <button type="submit" style="margin:0;">Search</button>
+    {% if search_query %}
+      <a href="/admin/teams" class="btn secondary" style="margin:0;">Clear</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Team Name</th>
+          <th>Code</th>
+          <th>Members</th>
+          <th>Status</th>
+          <th>Lock / Disband</th>
+          <th>Score Adjustment</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if teams %}
+          {% for t in teams %}
+          <tr>
+            <td>
+              <strong>{{ t.name }}</strong>
+              <div class="hint">{{ t.created_at }}</div>
+            </td>
+            <td>
+              <span style="font-family:monospace;font-weight:700;">{{ t.join_code }}</span>
+            </td>
+            <td>
+              {% for m in t.member_names %}
+                <span class="badge secondary">@{{ m }}</span>
+              {% endfor %}
+            </td>
+            <td>
+              {% if t.disbanded %}
+                <span class="badge hard">Disbanded</span>
+              {% elif t.is_locked %}
+                <span class="badge locked">Locked</span>
+              {% else %}
+                <span class="badge easy">Open</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if not t.disbanded %}
+                <form method="post" action="/admin/teams/{{ t.id }}/action" class="inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  {% if t.is_locked %}
+                    <input type="hidden" name="action" value="unlock">
+                    <button type="submit" class="secondary" style="margin:0;padding:0.3rem 0.6rem;font-size:0.8rem;">Unlock</button>
+                  {% else %}
+                    <input type="hidden" name="action" value="lock">
+                    <button type="submit" class="secondary" style="margin:0;padding:0.3rem 0.6rem;font-size:0.8rem;">Lock</button>
+                  {% endif %}
+                </form>
+                <form method="post" action="/admin/teams/{{ t.id }}/action" class="inline" style="margin-left:0.3rem;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="action" value="disband">
+                  <button type="submit" class="danger" style="margin:0;padding:0.3rem 0.6rem;font-size:0.8rem;" onclick="return confirm('Disband team {{ t.name }}?');">Disband</button>
+                </form>
+              {% endif %}
+            </td>
+            <td>
+              {% if not t.disbanded %}
+              <form method="post" action="/admin/teams/{{ t.id }}/score" style="display:flex;gap:0.4rem;align-items:center;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input name="delta" type="number" placeholder="±pts" style="width:5rem;padding:0.3rem 0.5rem;font-size:0.85rem;" required>
+                <input name="reason" type="text" placeholder="Reason" style="flex:1;min-width:6rem;padding:0.3rem 0.5rem;font-size:0.85rem;" required>
+                <button type="submit" style="margin:0;padding:0.3rem 0.6rem;font-size:0.8rem;">Apply</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="6" class="center hint" style="padding: 2rem;">No teams found.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

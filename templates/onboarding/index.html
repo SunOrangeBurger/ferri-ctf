@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Onboarding — FerrisCTF{% endblock %}
+{% block content %}
+<div class="center" style="margin-bottom: 2rem;">
+  <h1>Welcome to FerrisCTF, {{ user.display_name }}!</h1>
+  <p class="hint" style="font-size:1.05rem;">You need a team (room) to compete. Create a new room or join your teammate's room.</p>
+</div>
+
+{% if error %}
+<div class="alert bad">{{ error }}</div>
+{% endif %}
+
+<div class="grid-2">
+  <div class="card">
+    <h2>🚀 Create a Room</h2>
+    <p class="hint">Choose a team name. You will be the captain and receive an 8-character invite code to share with your teammate (max 2 members).</p>
+    <form method="post" action="/team/create">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="name">Team Name</label>
+      <input id="name" name="name" type="text" required minlength="2" maxlength="32" placeholder="e.g. ByteBandits" value="{{ team_name | default('', true) }}">
+      <button type="submit" style="width:100%;">Create Room</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>🤝 Join Existing Room</h2>
+    <p class="hint">Enter the 8-character code given by your captain. You can preview members before joining.</p>
+    <form method="post" action="/team/join">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="code">Join Code (8 characters)</label>
+      <input id="code" name="code" type="text" required maxlength="8" placeholder="e.g. 7X3K9M2P" style="text-transform:uppercase;font-family:monospace;letter-spacing:0.1em;" value="{{ join_code | default('', true) }}">
+      <div style="display:flex;gap:0.75rem;margin-top:1.1rem;">
+        <button type="button" class="secondary" style="margin:0;flex:1;" onclick="previewTeam()">Preview Team</button>
+        <button type="submit" style="margin:0;flex:1;">Join Room</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function previewTeam() {
+  const code = document.getElementById('code').value.trim().toUpperCase();
+  if (!code) {
+    alert('Please enter a join code first');
+    return;
+  }
+  window.location.href = '/team/preview/' + encodeURIComponent(code);
+}
+</script>
+{% endblock %}

@@ -1,10 +1,104 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - FerrisCTF{% endblock %}
+{% block title %}Admin Dashboard — FerrisCTF{% endblock %}
 {% block content %}
-<section class="card">
-  <h1>Dashboard</h1>
-  <p>Signed in as <strong>{{ user.username }}</strong>.</p>
-  <p>Role: <strong>{% if user.is_ferris %}Ferris (operator){% else %}Admin{% endif %}</strong></p>
-  <p class="hint">Placeholder page. Team, score and round controls arrive in later build steps.</p>
-</section>
+<div class="flex-between" style="margin-bottom: 1.5rem; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1 style="margin:0;">⚙️ Admin Dashboard</h1>
+    <div class="hint" style="margin-top:0.35rem;">
+      Signed in as <strong>{{ user.display_name }}</strong> (@{{ user.username }})
+      {% if user.is_ferris %}
+        <span class="badge easy" style="margin-left:0.5rem;">Ferris (operator)</span>
+      {% else %}
+        <span class="badge secondary" style="margin-left:0.5rem;">Admin</span>
+      {% endif %}
+    </div>
+  </div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+    <a href="/admin/export/solves" class="btn secondary" style="font-size:0.85rem;">Export Solves CSV</a>
+    <a href="/admin/export/submissions" class="btn secondary" style="font-size:0.85rem;">Export Submissions CSV</a>
+  </div>
+</div>
+
+<div class="stat-box">
+  <div class="stat">
+    <div class="stat-val">{{ teams_count }}</div>
+    <div class="stat-lbl">Active Teams</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val">{{ users_count }}</div>
+    <div class="stat-lbl">Total Users</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val">{{ solves_count }}</div>
+    <div class="stat-lbl">Total Solves</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val">
+      {% if active_round %}Round {{ active_round.round_number }}{% else %}Paused{% endif %}
+    </div>
+    <div class="stat-lbl">Active Round</div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card interactive">
+    <h3>👥 Team Management</h3>
+    <p class="hint">Search teams, force-join/kick members, change captains, manual score adjustments, and locking.</p>
+    <a href="/admin/teams" class="btn" style="width:100%;">Manage Teams →</a>
+  </div>
+
+  {% if user.is_ferris %}
+  <div class="card interactive">
+    <h3>🌊 Round & Event Controls</h3>
+    <p class="hint">Start event (Round 1), trigger next round, set time limits, or end current active round.</p>
+    <a href="/admin/rounds" class="btn" style="width:100%;">Round Controls →</a>
+  </div>
+
+  <div class="card interactive">
+    <h3>🎯 Challenges & Hints</h3>
+    <p class="hint">Upload challenges (ZIP streaming), configure categories, points, flags, hints, and toggles.</p>
+    <a href="/admin/challenges" class="btn" style="width:100%;">Manage Challenges →</a>
+  </div>
+
+  <div class="card interactive">
+    <h3>🛡️ Admin Privileges</h3>
+    <p class="hint">Grant or revoke administrator privileges to other registered college users.</p>
+    <a href="/admin/admins" class="btn" style="width:100%;">Manage Admins →</a>
+  </div>
+  {% endif %}
+
+  <div class="card interactive">
+    <h3>📜 Audit Log</h3>
+    <p class="hint">View audit trail of all administrative actions, round triggers, and manual score adjustments.</p>
+    <a href="/admin/audit" class="btn secondary" style="width:100%;">View Audit Log →</a>
+  </div>
+</div>
+
+{% if recent_audit %}
+<div class="card" style="margin-top:1.5rem;">
+  <h2>Recent Audit Activity</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Action</th>
+          <th>Target</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in recent_audit %}
+        <tr>
+          <td class="hint">{{ a.created_at }}</td>
+          <td><strong>{{ a.action }}</strong></td>
+          <td>{{ a.target_type | default("—", true) }} {% if a.target_id %}({{ a.target_id }}){% endif %}</td>
+          <td class="hint">{{ a.details | default("—", true) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

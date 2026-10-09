@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{{ challenge.title }} — FerrisCTF{% endblock %}
+{% block content %}
+<div style="margin-bottom: 1rem;">
+  <a href="/challenges" class="hint">← Back to Challenge Board</a>
+</div>
+
+{% if status_msg == "correct" %}
+  <div class="alert good">🎉 Flag correct! Points have been awarded to your team!</div>
+{% elif status_msg == "incorrect" %}
+  <div class="alert bad">❌ Incorrect flag. Please double-check and try again.</div>
+{% elif status_msg == "already_solved" %}
+  <div class="alert info">ℹ️ Your team has already solved this challenge.</div>
+{% elif status_msg == "hint_unlocked" %}
+  <div class="alert good">💡 Hint unlocked! The cost will be deducted upon solving.</div>
+{% endif %}
+
+<div class="card">
+  <div class="flex-between" style="flex-wrap:wrap;gap:1rem;margin-bottom:1rem;">
+    <div>
+      <span class="badge {{ challenge.difficulty }}">{{ challenge.difficulty }}</span>
+      <span class="hint" style="margin-left:0.5rem;">{{ challenge.category }}</span>
+      <h1 style="margin:0.5rem 0 0;">{{ challenge.title }}</h1>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:1.75rem;font-weight:800;color:var(--cyan);">
+        {{ challenge.effective_points }} pts
+      </div>
+      {% if challenge.repeat_penalty > 0 or challenge.hint_cost > 0 %}
+        <div class="hint" style="font-size:0.8rem;">
+          Base: {{ challenge.base_points }}
+          {% if challenge.repeat_penalty > 0 %}| -{{ challenge.repeat_penalty }} repeat{% endif %}
+          {% if challenge.hint_cost > 0 %}| -{{ challenge.hint_cost }} hints{% endif %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:1.5rem 0;margin:1rem 0;line-height:1.7;white-space:pre-wrap;">{{ challenge.description }}</div>
+
+  {% if challenge.has_file %}
+  <div style="margin: 1.25rem 0;">
+    <a href="/challenges/{{ challenge.id }}/download" class="btn secondary" style="display:inline-flex;align-items:center;gap:0.5rem;">
+      📥 Download Attachment ({{ challenge.file_name | default("challenge.zip", true) }})
+    </a>
+  </div>
+  {% endif %}
+
+  {% if challenge.is_solved %}
+    <div class="alert good" style="margin-top:1.5rem;">
+      <strong>✓ Solved!</strong> Your team scored <strong>{{ challenge.points_awarded | default(challenge.effective_points, true) }} points</strong> for this challenge.
+    </div>
+  {% else %}
+    <div style="margin-top: 2rem;">
+      <h2>Submit Flag</h2>
+      <form method="post" action="/challenges/{{ challenge.id }}/submit">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+          <input name="flag" type="text" required placeholder="ferris{...}" style="flex:1;min-width:18rem;font-family:monospace;">
+          <button type="submit" style="margin:0;">Submit</button>
+        </div>
+      </form>
+    </div>
+  {% endif %}
+</div>
+
+{% if hints %}
+<div class="card">
+  <h2>💡 Hints</h2>
+  <div style="display:flex;flex-direction:column;gap:1rem;">
+    {% for h in hints %}
+    <div style="border:1px solid var(--line);border-radius:0.5rem;padding:1rem;background:var(--bg);">
+      {% if h.is_unlocked %}
+        <div class="flex-between" style="margin-bottom:0.5rem;">
+          <span class="badge easy">Unlocked</span>
+          <span class="hint">-{{ h.point_cost }} pts</span>
+        </div>
+        <div style="white-space:pre-wrap;line-height:1.6;">{{ h.content }}</div>
+      {% else %}
+        <div class="flex-between" style="align-items:center;">
+          <div>
+            <strong>Hint (Cost: {{ h.point_cost }} pts)</strong>
+            <div class="hint">Unlocking will reveal the hint content and deduct points on solve.</div>
+          </div>
+          {% if not challenge.is_solved %}
+          <form method="post" action="/challenges/{{ challenge.id }}/hint" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="hint_id" value="{{ h.id }}">
+            <button type="submit" class="secondary" style="margin:0;padding:0.4rem 0.8rem;" onclick="return confirm('Unlock hint for {{ h.point_cost }} points?');">
+              Unlock (-{{ h.point_cost }} pts)
+            </button>
+          </form>
+          {% else %}
+          <span class="hint">Locked</span>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

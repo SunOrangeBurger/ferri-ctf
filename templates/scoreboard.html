@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Leaderboard — FerrisCTF{% endblock %}
+{% block content %}
+<div class="flex-between" style="margin-bottom: 1.5rem; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1 style="margin:0;">🏆 Leaderboard</h1>
+    <div style="margin-top:0.35rem;">
+      {% if active_round %}
+        <span class="badge medium">Round {{ active_round.round_number }} in progress</span>
+      {% else %}
+        <span class="badge secondary">Between Rounds</span>
+      {% endif %}
+    </div>
+  </div>
+  <div>
+    <span class="hint" id="poll-indicator">● Live updates every 15s</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table id="scoreboard-table">
+      <thead>
+        <tr>
+          <th style="width:4rem;">Rank</th>
+          <th>Team</th>
+          <th>Members</th>
+          <th style="text-align:right;">Score</th>
+          <th style="text-align:center;">Hard</th>
+          <th style="text-align:center;">Med</th>
+          <th style="text-align:center;">Easy</th>
+          <th>Last Solve</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if scoreboard %}
+          {% for e in scoreboard %}
+          <tr {% if e.rank == 1 %}style="background:rgba(247, 76, 0, 0.08);"{% endif %}>
+            <td>
+              <strong style="font-size:1.1rem;{% if e.rank == 1 %}color:#f59e0b;{% elif e.rank == 2 %}color:#94a3b8;{% elif e.rank == 3 %}color:#b45309;{% endif %}">
+                #{{ e.rank }}
+              </strong>
+            </td>
+            <td>
+              <strong>{{ e.team_name }}</strong>
+            </td>
+            <td>
+              <span class="hint">
+                {% for m in e.members %}
+                  {{ m }}{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              </span>
+            </td>
+            <td style="text-align:right;">
+              <strong style="color:var(--cyan);font-size:1.1rem;">{{ e.total_score }}</strong>
+            </td>
+            <td style="text-align:center;">
+              <span class="badge hard">{{ e.hard_solved }}</span>
+            </td>
+            <td style="text-align:center;">
+              <span class="badge medium">{{ e.medium_solved }}</span>
+            </td>
+            <td style="text-align:center;">
+              <span class="badge easy">{{ e.easy_solved }}</span>
+            </td>
+            <td class="hint">
+              {{ e.reached_score_at | default("—", true) }}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="8" class="center hint" style="padding: 2.5rem;">
+              No teams on the leaderboard yet. Solves will appear here.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// Auto-refresh leaderboard via /api/scoreboard
+setInterval(async () => {
+  try {
+    const res = await fetch('/api/scoreboard');
+    if (!res.ok) return;
+    const data = await res.json();
+    const ind = document.getElementById('poll-indicator');
+    if (ind) ind.textContent = '● Updated ' + new Date().toLocaleTimeString();
+  } catch(e) {}
+}, 15000);
+</script>
+{% endblock %}

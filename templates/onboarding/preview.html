@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Preview Room — {{ team.name }}{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h2>Room Preview</h2>
+  <div style="margin-bottom:1.25rem;">
+    <div class="hint">Team Name</div>
+    <div style="font-size:1.5rem;font-weight:800;color:var(--accent);">{{ team.name }}</div>
+  </div>
+
+  <div style="margin-bottom:1.5rem;">
+    <div class="hint">Current Members ({{ members | length }}/2)</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Member</th>
+            <th>Role</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in members %}
+          <tr>
+            <td>
+              <strong>{{ m.display_name }}</strong>
+              <div class="hint">@{{ m.username }}</div>
+            </td>
+            <td>
+              <span class="badge {% if m.role == 'captain' %}easy{% else %}secondary{% endif %}">
+                {{ m.role }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if team.is_locked %}
+    <div class="alert bad">This team is locked and cannot be joined.</div>
+    <a href="/onboarding" class="btn secondary" style="width:100%;">Back to Onboarding</a>
+  {% elif members | length >= 2 %}
+    <div class="alert bad">This team is already full (maximum 2 members).</div>
+    <a href="/onboarding" class="btn secondary" style="width:100%;">Back to Onboarding</a>
+  {% else %}
+    <form method="post" action="/team/join">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="code" value="{{ team.join_code }}">
+      <div style="display:flex;gap:0.75rem;">
+        <a href="/onboarding" class="btn secondary" style="flex:1;">Cancel</a>
+        <button type="submit" style="margin:0;flex:1;">Confirm & Join</button>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

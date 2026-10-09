@@ -13,6 +13,7 @@ pub struct AppState {
     pub limiter: RateLimiter,
     pub templates: Templates,
     pub started: Instant,
+    pub scoreboard_cache: tokio::sync::RwLock<Option<(Instant, Vec<crate::services::scoring::ScoreboardEntry>)>>,
 }
 
 impl AppState {
@@ -26,6 +27,7 @@ impl AppState {
             limiter: RateLimiter::new(),
             templates: Templates::new(),
             started: Instant::now(),
+            scoreboard_cache: tokio::sync::RwLock::new(None),
         })
     }
 }

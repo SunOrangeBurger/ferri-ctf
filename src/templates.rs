@@ -31,6 +31,18 @@ const REQUIRED: &[&str] = &[
     "auth/register.html",
     "admin/login.html",
     "admin/dashboard.html",
+    "admin/teams.html",
+    "admin/rounds.html",
+    "admin/challenges.html",
+    "admin/admins.html",
+    "admin/audit.html",
+    "onboarding/index.html",
+    "onboarding/preview.html",
+    "team/dashboard.html",
+    "challenges/list.html",
+    "challenges/detail.html",
+    "scoreboard.html",
+    "profile.html",
     "errors/error.html",
 ];
 

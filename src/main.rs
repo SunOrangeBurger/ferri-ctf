@@ -7,6 +7,7 @@ mod db;
 mod errors;
 mod keys;
 mod middleware;
+mod models;
 mod passwords;
 mod ratelimit;
 mod routes;
@@ -48,6 +49,25 @@ async fn main() -> anyhow::Result<()> {
                     Ok(n) if n > 0 => tracing::debug!(purged = n, "expired sessions removed"),
                     Ok(_) => {}
                     Err(e) => tracing::warn!(error = %e, "session purge failed"),
+                }
+            }
+        }
+    });
+
+    // Round auto-end task: checks auto_end_at every second per spec 6.4
+    tokio::spawn({
+        let state = state.clone();
+        async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                tick.tick().await;
+                match services::rounds::check_auto_end_rounds(&state.db).await {
+                    Ok(ended) if !ended.is_empty() => {
+                        services::scoring::invalidate_cache(&state).await;
+                        tracing::info!(?ended, "rounds reached auto_end_at and were concluded");
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = %e, "round auto-end check failed"),
                 }
             }
         }

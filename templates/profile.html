@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Profile — {{ user.display_name }}{% endblock %}
+{% block content %}
+<div class="grid-2">
+  <div class="card">
+    <h2>👤 User Profile</h2>
+    <div style="margin-bottom:1rem;">
+      <div class="hint">Display Name</div>
+      <div style="font-size:1.2rem;font-weight:700;">{{ user.display_name }}</div>
+    </div>
+    <div style="margin-bottom:1rem;">
+      <div class="hint">Username (College ID)</div>
+      <div style="font-family:monospace;font-size:1.05rem;">@{{ user.username }}</div>
+    </div>
+    <div style="margin-bottom:1rem;">
+      <div class="hint">Team</div>
+      <div style="font-size:1.1rem;font-weight:600;">
+        {% if team_name != "None" %}
+          <a href="/team">{{ team_name }}</a> ({{ role }})
+        {% else %}
+          <span class="hint">No team</span> — <a href="/onboarding">Join or Create a Room</a>
+        {% endif %}
+      </div>
+    </div>
+    <div style="margin-bottom:1rem;">
+      <div class="hint">Total Challenges Solved</div>
+      <div style="font-size:1.4rem;font-weight:800;color:var(--accent);">{{ solves_count }}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🔒 Change Password</h2>
+    {% if error %}
+      <div class="alert bad">{{ error }}</div>
+    {% endif %}
+    {% if success %}
+      <div class="alert good">{{ success }}</div>
+    {% endif %}
+
+    <form method="post" action="/profile/password">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="current_password">Current Password</label>
+      <input id="current_password" name="current_password" type="password" required autocomplete="current-password">
+
+      <label for="new_password">New Password (min 8 characters)</label>
+      <input id="new_password" name="new_password" type="password" required minlength="8" autocomplete="new-password">
+
+      <label for="new_password_confirm">Confirm New Password</label>
+      <input id="new_password_confirm" name="new_password_confirm" type="password" required minlength="8" autocomplete="new-password">
+
+      <button type="submit" style="width:100%;">Change Password</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

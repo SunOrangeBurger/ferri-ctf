@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Challenges — FerrisCTF{% endblock %}
+{% block content %}
+<div class="flex-between" style="margin-bottom: 1.5rem; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1 style="margin:0;">Challenges</h1>
+    <div style="margin-top:0.35rem;">
+      {% if active_round %}
+        <span class="badge medium">Round {{ active_round.round_number }}</span>
+        {% if active_round.auto_end_at %}
+          <span class="hint" style="margin-left:0.5rem;" id="round-timer" data-end="{{ active_round.auto_end_at }}">
+            Ends at: {{ active_round.auto_end_at }}
+          </span>
+        {% endif %}
+      {% else %}
+        <span class="badge secondary">Between Rounds</span>
+      {% endif %}
+    </div>
+  </div>
+  <div>
+    <a href="/scoreboard" class="btn secondary">View Leaderboard</a>
+  </div>
+</div>
+
+{% if is_between_rounds %}
+<div class="card center" style="padding: 3rem 1.5rem;">
+  <h2>⏸️ Round Inactive</h2>
+  <p class="hint" style="max-width:30rem;margin:0 auto 1.5rem;">
+    There is no active round at the moment. Challenges and flag submissions are paused between rounds.
+  </p>
+  <a href="/team" class="btn">Return to Team Dashboard</a>
+</div>
+{% elif challenges %}
+<div class="grid">
+  {% for c in challenges %}
+  <div class="card interactive" style="display:flex;flex-direction:column;justify-content:space-between;{% if c.is_solved %}border-color:var(--green);{% endif %}">
+    <div>
+      <div class="flex-between" style="margin-bottom:0.75rem;">
+        <span class="badge {{ c.difficulty }}">{{ c.difficulty }}</span>
+        <span style="font-weight:700;color:var(--cyan);font-size:1.1rem;">
+          {{ c.effective_points }} pts
+        </span>
+      </div>
+      <h3 style="margin-bottom:0.4rem;">
+        <a href="/challenges/{{ c.id }}" style="color:var(--fg);text-decoration:none;">{{ c.title }}</a>
+      </h3>
+      <div class="hint" style="margin-bottom:0.75rem;">{{ c.category }}</div>
+      <p style="color:var(--muted);font-size:0.9rem;margin:0 0 1rem;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">
+        {{ c.description }}
+      </p>
+    </div>
+
+    <div style="border-top:1px solid var(--line);padding-top:0.75rem;display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        {% if c.is_solved %}
+          <span class="badge solved">✓ Solved</span>
+        {% elif c.repeat_penalty > 0 %}
+          <span class="hint" style="color:var(--bad);font-size:0.75rem;">-{{ c.repeat_penalty }} repeat penalty</span>
+        {% endif %}
+        {% if c.has_file %}
+          <span title="File attachment available" style="margin-left:0.35rem;font-size:0.85rem;">📁</span>
+        {% endif %}
+      </div>
+      <a href="/challenges/{{ c.id }}" class="btn {% if c.is_solved %}secondary{% endif %}" style="padding:0.4rem 0.8rem;font-size:0.85rem;">
+        {% if c.is_solved %}Review{% else %}Solve →{% endif %}
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card center" style="padding: 2.5rem 1.5rem;">
+  <h2>No Challenges in Pool</h2>
+  <p class="hint">Your team currently has no challenges assigned for this round.</p>
+</div>
+{% endif %}
+{% endblock %}

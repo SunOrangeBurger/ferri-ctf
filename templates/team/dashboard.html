@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{{ team.name }} — FerrisCTF{% endblock %}
+{% block content %}
+<div class="flex-between" style="margin-bottom: 1.5rem; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1 style="margin:0;">{{ team.name }}</h1>
+    <div style="margin-top:0.35rem;">
+      {% if team.is_locked %}
+        <span class="badge locked">🔒 Team Locked</span>
+      {% else %}
+        <span class="badge easy">🔓 Open for Teammate</span>
+      {% endif %}
+      {% if active_round %}
+        <span class="badge medium" style="margin-left:0.5rem;">Round {{ active_round.round_number }} Active</span>
+      {% else %}
+        <span class="badge secondary" style="margin-left:0.5rem;">Between Rounds</span>
+      {% endif %}
+    </div>
+  </div>
+  <div style="text-align:right;">
+    <div class="hint">Invite Code</div>
+    <div class="code-box" id="join-code" title="Click to copy" onclick="navigator.clipboard.writeText('{{ team.join_code }}');alert('Copied to clipboard!');" style="cursor:pointer;">
+      {{ team.join_code }} 📋
+    </div>
+  </div>
+</div>
+
+<div class="stat-box">
+  <div class="stat">
+    <div class="stat-val">{{ total_score }}</div>
+    <div class="stat-lbl">Total Score (pts)</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val">
+      {% if current_rank %}#{{ current_rank }}{% else %}—{% endif %}
+    </div>
+    <div class="stat-lbl">Leaderboard Rank</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val">{{ solves | length }}</div>
+    <div class="stat-lbl">Challenges Solved</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2>👥 Team Roster ({{ members | length }}/2)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Member</th>
+            <th>Role</th>
+            {% if not team.is_locked and is_captain %}
+            <th>Actions</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in members %}
+          <tr>
+            <td>
+              <strong>{{ m.display_name }}</strong>
+              <div class="hint">@{{ m.username }}</div>
+            </td>
+            <td>
+              <span class="badge {% if m.role == 'captain' %}easy{% else %}secondary{% endif %}">
+                {{ m.role }}
+              </span>
+            </td>
+            {% if not team.is_locked and is_captain %}
+            <td>
+              {% if m.role != 'captain' %}
+                <form method="post" action="/team/transfer" class="inline" style="margin-right:0.5rem;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="user_id" value="{{ m.user_id }}">
+                  <button type="submit" class="secondary" style="margin:0;padding:0.25rem 0.5rem;font-size:0.8rem;">Make Captain</button>
+                </form>
+                <form method="post" action="/team/kick" class="inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="user_id" value="{{ m.user_id }}">
+                  <button type="submit" class="danger" style="margin:0;padding:0.25rem 0.5rem;font-size:0.8rem;" onclick="return confirm('Kick this member?');">Kick</button>
+                </form>
+              {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if not team.is_locked %}
+    <div style="margin-top:1.5rem;border-top:1px solid var(--line);padding-top:1rem;">
+      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+        <form method="post" action="/team/leave" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="secondary" onclick="return confirm('Are you sure you want to leave?');">Leave Team</button>
+        </form>
+
+        {% if is_captain %}
+        <form method="post" action="/team/disband" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="danger" onclick="return confirm('Disband team? All members will become free agents.');">Disband Team</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    {% if not team.is_locked and is_captain %}
+    <h2>✏️ Rename Team</h2>
+    <form method="post" action="/team/rename">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="name">New Team Name</label>
+      <input id="name" name="name" type="text" required minlength="2" maxlength="32" value="{{ team.name }}">
+      <button type="submit">Update Name</button>
+    </form>
+    {% else %}
+    <h2>🎯 Quick Links</h2>
+    <p>Challenges for the active round can be found on the challenge board.</p>
+    <a href="/challenges" class="btn" style="width:100%;text-align:center;margin-top:0.5rem;">Go to Challenges</a>
+    <a href="/scoreboard" class="btn secondary" style="width:100%;text-align:center;margin-top:0.75rem;">View Leaderboard</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>🏆 Team Solves History</h2>
+  {% if solves %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Challenge</th>
+          <th>Category</th>
+          <th>Difficulty</th>
+          <th>Points</th>
+          <th>Solved By</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in solves %}
+        <tr>
+          <td><strong>{{ s.title }}</strong></td>
+          <td>{{ s.category }}</td>
+          <td><span class="badge {{ s.difficulty }}">{{ s.difficulty }}</span></td>
+          <td><strong style="color:var(--green);">+{{ s.points_awarded }}</strong></td>
+          <td>{{ s.solver_name }}</td>
+          <td class="hint">{{ s.solved_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="hint">No challenges solved yet. Jump into the active round challenges to score points!</p>
+  {% endif %}
+</div>
+{% endblock %}

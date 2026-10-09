@@ -8,18 +8,24 @@
 </head>
 <body>
   <header class="nav">
-    <a class="brand" href="/">FerrisCTF</a>
-    <nav>
+    <a class="brand" href="/">🦀 FerrisCTF</a>
+    <nav class="nav-links">
+      <a href="/scoreboard">Leaderboard</a>
       {% if user %}
-        <span>{{ user.display_name }}</span>
-        {% if user.is_admin %}<a href="/admin/dashboard">Admin</a>{% endif %}
+        <a href="/challenges">Challenges</a>
+        <a href="/team">Team</a>
+        <a href="/profile">Profile</a>
+        {% if user.is_admin %}
+          <a href="/admin/dashboard" style="color:var(--accent);font-weight:700;">Admin</a>
+        {% endif %}
+        <span class="user-badge">{{ user.display_name }}</span>
         <form method="post" action="/logout" class="inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit" class="link">Log out</button>
         </form>
       {% else %}
         <a href="/login">Log in</a>
-        <a href="/register">Register</a>
+        <a href="/register" class="btn" style="padding:0.4rem 0.8rem;">Register</a>
       {% endif %}
     </nav>
   </header>

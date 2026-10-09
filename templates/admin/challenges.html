@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Manage Challenges — FerrisCTF Admin{% endblock %}
+{% block content %}
+<div class="flex-between" style="margin-bottom: 1.5rem; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1 style="margin:0;">🎯 Manage Challenges</h1>
+    <div class="hint">Upload new challenges, toggle visibility, manage hints, and delete challenges.</div>
+  </div>
+  <div>
+    <a href="/admin/dashboard" class="btn secondary">← Back to Dashboard</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2>➕ Upload New Challenge</h2>
+  <form method="post" action="/admin/challenges/new" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="grid-2">
+      <div>
+        <label for="title">Title</label>
+        <input id="title" name="title" type="text" required placeholder="e.g. Broken Cipher">
+
+        <label for="category">Category</label>
+        <select id="category" name="category" required>
+          <option value="Web">Web</option>
+          <option value="Pwn">Pwn</option>
+          <option value="Crypto">Crypto</option>
+          <option value="Forensics">Forensics</option>
+          <option value="Rev">Reverse Engineering</option>
+          <option value="Misc">Misc</option>
+        </select>
+
+        <label for="difficulty">Difficulty (Cannot be changed after creation per spec)</label>
+        <select id="difficulty" name="difficulty" required>
+          <option value="easy">Easy (60% pool quota)</option>
+          <option value="medium">Medium (30% pool quota)</option>
+          <option value="hard">Hard (10% pool quota)</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="points">Points</label>
+        <input id="points" name="points" type="number" required min="0" value="100">
+
+        <label for="flag">Flag (Exact answer)</label>
+        <input id="flag" name="flag" type="text" required placeholder="ferris{...}" style="font-family:monospace;">
+
+        <label for="file">Challenge ZIP File (Max 30MB, optional)</label>
+        <input id="file" name="file" type="file" accept=".zip">
+      </div>
+    </div>
+
+    <label for="description">Description (Markdown / text)</label>
+    <textarea id="description" name="description" rows="4" required placeholder="Challenge description, background, and instructions..."></textarea>
+
+    <button type="submit" style="margin-top:1rem;">Upload Challenge</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="flex-between" style="margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
+    <h2>Challenge Bank ({{ challenges | length }})</h2>
+    <div style="display:flex;gap:0.5rem;">
+      <form method="post" action="/admin/challenges/bulk" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="action" value="activate">
+        <button type="submit" class="secondary" style="margin:0;font-size:0.85rem;">Activate All</button>
+      </form>
+      <form method="post" action="/admin/challenges/bulk" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="action" value="deactivate">
+        <button type="submit" class="secondary" style="margin:0;font-size:0.85rem;">Deactivate All</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Category</th>
+          <th>Difficulty</th>
+          <th>Points</th>
+          <th>File</th>
+          <th>Status</th>
+          <th>Add Hint</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if challenges %}
+          {% for c in challenges %}
+          <tr>
+            <td><strong>{{ c.title }}</strong></td>
+            <td>{{ c.category }}</td>
+            <td><span class="badge {{ c.difficulty }}">{{ c.difficulty }}</span></td>
+            <td><strong>{{ c.points }}</strong></td>
+            <td class="hint">{{ c.file_name | default("None", true) }}</td>
+            <td>
+              {% if c.is_active %}
+                <span class="badge easy">Active</span>
+              {% else %}
+                <span class="badge secondary">Inactive</span>
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" action="/admin/challenges/{{ c.id }}/hints" style="display:flex;gap:0.35rem;align-items:center;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input name="content" type="text" placeholder="Hint text" style="padding:0.25rem 0.5rem;font-size:0.8rem;width:8rem;" required>
+                <input name="point_cost" type="number" placeholder="Cost" min="0" value="10" style="padding:0.25rem 0.5rem;font-size:0.8rem;width:4rem;" required>
+                <button type="submit" class="secondary" style="margin:0;padding:0.25rem 0.5rem;font-size:0.8rem;">+Hint</button>
+              </form>
+            </td>
+            <td>
+              <form method="post" action="/admin/challenges/{{ c.id }}/toggle" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="secondary" style="margin:0;padding:0.25rem 0.5rem;font-size:0.8rem;">
+                  {% if c.is_active %}Deactivate{% else %}Activate{% endif %}
+                </button>
+              </form>
+              <form method="post" action="/admin/challenges/{{ c.id }}/delete" class="inline" style="margin-left:0.25rem;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="danger" style="margin:0;padding:0.25rem 0.5rem;font-size:0.8rem;" onclick="return confirm('Delete challenge {{ c.title }}? Deletion cascades to solves and changes scores!');">
+                  Delete
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="8" class="center hint" style="padding: 2rem;">No challenges uploaded yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

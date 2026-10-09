@@ -88,3 +88,57 @@ Spec: FerrisCTF_Technical_Specification_v5.md
 - Deviation 27: registration auto-logs-in; bad login is 401, banned is 403, rate limited is 429.
 - Open: tower_governor removal, NAT/per-IP knob, shutdown drain cap, submit/join/download limits, CSV formula guard.
 - Next: team service and onboarding, or pool/rounds/scoring (recommended first: highest-risk logic, no HTTP needed).
+
+## Update: full service layer, routes, and templates
+
+- Done: all remaining services, routes, templates, and models. **55/55 tests passing**, clean build with zero warnings.
+
+### Services added
+- `services/pool.rs` — difficulty-based challenge pool assignment with quotas and OsRng (fixed `ThreadRng` Send issue).
+- `services/rounds.rs` — round lifecycle (start event, start/end round, time limits, auto-end, audit logging).
+- `services/scoring.rs` — scoreboard computation with solve counts, tie-breaking, caching.
+- `services/team.rs` — team CRUD (create, join, leave, kick, transfer captain, rename, disband).
+- `services/verifier.rs` — HMAC-based flag verification with trimming and salt.
+- `services/files.rs` — ZIP file upload validation and storage, filename sanitisation.
+- `services/hints.rs` — hint management and point-cost deduction.
+
+### Models added
+- `models/mod.rs` — shared model structs: `Challenge`, `Round`, `EventState`, `AuditLog`, `Hint`, `Solve`, `Submission`, `RoundViewStub`.
+
+### Routes added
+- `routes/onboarding.rs` — team creation, join-by-code, preview.
+- `routes/team.rs` — team dashboard, leave, kick, transfer, rename, disband.
+- `routes/challenges.rs` — challenge list, detail, file download, flag submission, hint requests.
+- `routes/scoreboard.rs` — HTML scoreboard page and JSON API endpoint.
+- `routes/profile.rs` — profile page and password change.
+- `routes/admin.rs` — expanded with full admin (teams, score adjust, ban/unban, CSV export, audit) and Ferris-level (rounds, challenges CRUD, hints, admin management) routes.
+- `routes/mod.rs` — all routes wired (29 route entries total).
+
+### Templates added
+- `templates/onboarding/index.html`, `templates/onboarding/preview.html`
+- `templates/team/dashboard.html`
+- `templates/challenges/list.html`, `templates/challenges/detail.html`
+- `templates/scoreboard.html`, `templates/profile.html`
+- `templates/admin/teams.html`, `templates/admin/rounds.html`, `templates/admin/challenges.html`, `templates/admin/admins.html`, `templates/admin/audit.html`
+- `templates/base.html` — updated nav with conditional admin/team links.
+
+### Other changes
+- `src/main.rs` — added background task for round auto-ending (`tokio::time::interval`, checks `auto_end_at`).
+- `static/style.css` — full CTF-themed stylesheet (dark mode, stat boxes, badges, cards, grid, tables, forms, responsive).
+- `src/ratelimit.rs` — added `ADMIN_LOGIN` rate limit preset (3 attempts / 5 min).
+- `src/state.rs` — added `started: Instant` for uptime in `/health`.
+- Bug fix: `templates/admin/dashboard.html` — `Ferris (Operator)` → `Ferris (operator)` to match test assertion.
+
+### Deviations
+- Deviation 28: `OsRng` used instead of `ThreadRng` in pool assignment (ThreadRng is not Send-safe for async contexts).
+- Deviation 29: round auto-end runs on a 1-second interval background task checking the DB, rather than a scheduled timer per round.
+- Deviation 30: CSV export uses simple quote-escaping (double-quote doubling); no formula injection guard yet.
+
+### Open
+- tower_governor removal from `Cargo.toml`.
+- NAT/per-IP rate-limit knob.
+- Shutdown drain cap (10s).
+- Submit/join/download rate limits.
+- CSV formula injection guard (`=`, `+`, `-`, `@` prefix stripping).
+- Integration/E2E tests for the new routes.
+- Browser testing for the full UI flow.

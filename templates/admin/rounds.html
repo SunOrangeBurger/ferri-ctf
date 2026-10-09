@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Round & Event Controls — FerrisCTF Admin{% endblock %}
+{% block content %}
+<div class="flex-between" style="margin-bottom: 1.5rem; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1 style="margin:0;">🌊 Round & Event Controls</h1>
+    <div class="hint">Ferris operator controls for event launch and round wave lifecycles.</div>
+  </div>
+  <div>
+    <a href="/admin/dashboard" class="btn secondary">← Back to Dashboard</a>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2>🚩 Event State</h2>
+    <div style="margin-bottom:1rem;">
+      <div class="hint">Event Started</div>
+      <div style="font-size:1.2rem;font-weight:700;">
+        {% if event_state.started_at %}
+          <span class="badge easy">✓ Started at {{ event_state.started_at }}</span>
+        {% else %}
+          <span class="badge secondary">Not Started</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if not event_state.started_at %}
+      <div class="alert info">
+        Starting the event will lock all teams with at least 1 member and launch Round 1 immediately.
+      </div>
+      <form method="post" action="/admin/event/start">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="event_limit">Round 1 Time Limit (Minutes, optional)</label>
+        <input id="event_limit" name="time_limit_minutes" type="number" min="1" placeholder="e.g. 60 (leave empty for no limit)">
+        <button type="submit" style="width:100%;margin-top:1rem;" onclick="return confirm('Launch the event and start Round 1? This will lock all registered teams!');">
+          🚀 Start Event (Round 1)
+        </button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>⏱️ Active Round Status</h2>
+    {% if active_round %}
+      <div style="margin-bottom:1rem;">
+        <span class="badge medium" style="font-size:0.9rem;">Round {{ active_round.round_number }} Active</span>
+        <div class="hint" style="margin-top:0.35rem;">Started at {{ active_round.started_at }}</div>
+        {% if active_round.auto_end_at %}
+          <div style="margin-top:0.25rem;font-weight:600;color:var(--bad);">
+            Auto-ends at: {{ active_round.auto_end_at }} ({{ active_round.time_limit_minutes }} min limit)
+          </div>
+        {% else %}
+          <div class="hint" style="margin-top:0.25rem;">No automatic time limit set</div>
+        {% endif %}
+      </div>
+
+      <div style="border-top:1px solid var(--line);padding-top:1rem;margin-top:1rem;">
+        <h3>Update Time Limit</h3>
+        <form method="post" action="/admin/rounds/limit" style="margin-bottom:1rem;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="round_number" value="{{ active_round.round_number }}">
+          <div style="display:flex;gap:0.5rem;">
+            <input name="time_limit_minutes" type="number" min="1" placeholder="New limit (mins)" required style="flex:1;">
+            <button type="submit" style="margin:0;">Set Limit</button>
+          </div>
+        </form>
+
+        <form method="post" action="/admin/rounds/end">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="round_number" value="{{ active_round.round_number }}">
+          <button type="submit" class="danger" style="width:100%;margin:0;" onclick="return confirm('End Round {{ active_round.round_number }} immediately?');">
+            🛑 End Round {{ active_round.round_number }} Now
+          </button>
+        </form>
+      </div>
+    {% elif event_state.started_at %}
+      <div class="alert info">No round is currently active. The event is paused between rounds.</div>
+      <form method="post" action="/admin/rounds/start">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="next_limit">Time Limit (Minutes, optional)</label>
+        <input id="next_limit" name="time_limit_minutes" type="number" min="1" placeholder="e.g. 60">
+        <button type="submit" style="width:100%;margin-top:1rem;">
+          ▶️ Start Next Round
+        </button>
+      </form>
+    {% else %}
+      <p class="hint">Start the event on the left to begin Round 1.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>📜 All Rounds</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Round #</th>
+          <th>Started At</th>
+          <th>Time Limit</th>
+          <th>Auto-End At</th>
+          <th>Ended At</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if rounds %}
+          {% for r in rounds %}
+          <tr>
+            <td><strong>Round {{ r.round_number }}</strong></td>
+            <td>{{ r.started_at }}</td>
+            <td>{% if r.time_limit_minutes %}{{ r.time_limit_minutes }} min{% else %}—{% endif %}</td>
+            <td class="hint">{{ r.auto_end_at | default("—", true) }}</td>
+            <td class="hint">{{ r.ended_at | default("—", true) }}</td>
+            <td>
+              {% if r.ended_at %}
+                <span class="badge secondary">Concluded</span>
+              {% else %}
+                <span class="badge easy">Active</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="6" class="center hint" style="padding: 2rem;">No rounds created yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
