@@ -1,0 +1,5 @@
+target/
+uploads/
+*.db
+*.db-*
+.env
