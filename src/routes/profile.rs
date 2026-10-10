@@ -56,9 +56,9 @@ pub async fn change_password_submit(
     match auth_svc::change_password(
         &state,
         &user.user_id,
+        &user.session_id,
         &form.current_password,
         &form.new_password,
-        &user.session_id,
     )
     .await
     {
