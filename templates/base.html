@@ -6,43 +6,76 @@
   <title>{% block title %}Nimbus 2000{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
-  <header class="nav">
-    <a class="brand" href="/" aria-label="Nimbus 2000">
-      <span class="brand-name">Nimbus 2000</span>
-      <span class="brand-byline">nexus aws</span>
-    </a>
-    <nav class="nav-links">
-      <a href="/scoreboard">Leaderboard</a>
-      {% if user %}
+<body{% if user %} class="has-session"{% endif %}>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  {% if user %}
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Account navigation">
+      <a class="brand" href="/" aria-label="Nimbus 2000 home">
+        <span class="brand-name">Nimbus 2000</span>
+        <span class="brand-byline">nexus aws</span>
+      </a>
+      <nav class="side-links" aria-label="Primary">
+        <a href="/">Dashboard</a>
         <a href="/challenges">Challenges</a>
         <a href="/team">Team</a>
+        <a href="/scoreboard">Leaderboard</a>
         <a href="/profile">Profile</a>
         {% if user.is_admin %}
-          <a href="/admin/dashboard" style="color:var(--accent);font-weight:700;">Admin</a>
+          <a href="/admin/dashboard">Admin</a>
         {% endif %}
+      </nav>
+      <div class="sidebar-bottom">
         <span class="user-badge">{{ user.display_name }}</span>
         <form method="post" action="/logout" class="inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit" class="link">Log out</button>
         </form>
-      {% else %}
-        <a href="/login">Log in</a>
-        <a href="/register" class="btn" style="padding:0.4rem 0.9rem;">Register</a>
-      {% endif %}
+      </div>
+    </aside>
+    <div class="app-workspace">
+      <header class="topbar">
+        <span class="topbar-title">Nimbus 2000</span>
+        <div class="topbar-actions">
+          <span class="topbar-user">{{ user.display_name }}</span>
+          <input type="checkbox" id="theme-switch" class="theme-switch" role="switch">
+          <label for="theme-switch" class="theme-toggle">
+            <span class="theme-toggle-icon" aria-hidden="true">☾</span>
+            <span class="theme-toggle-label">Dark mode</span>
+          </label>
+        </div>
+      </header>
+  {% else %}
+  <header class="nav">
+    <a class="brand" href="/" aria-label="Nimbus 2000">
+      <span class="brand-name">Nimbus 2000</span>
+      <span class="brand-byline">nexus aws</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/scoreboard">Leaderboard</a>
+      <a href="/login">Log in</a>
+      <a href="/register" class="btn">Register</a>
+      <input type="checkbox" id="theme-switch" class="theme-switch" role="switch">
+      <label for="theme-switch" class="theme-toggle">
+        <span class="theme-toggle-icon" aria-hidden="true">☾</span>
+        <span class="theme-toggle-label">Dark mode</span>
+      </label>
     </nav>
   </header>
-  <main>{% block content %}{% endblock %}</main>
+  {% endif %}
+  <main id="main-content">{% block content %}{% endblock %}</main>
   <footer class="site-footer">
     <div class="footer-inner">
       <div class="footer-brand">
         <span class="footer-name">Nimbus 2000</span>
         <span class="footer-pill">nexus aws</span>
       </div>
-      <div class="footer-info">
-        <span>Capture The Flag Platform</span>
-      </div>
+      <div class="footer-info">Capture The Flag Platform</div>
     </div>
   </footer>
+  {% if user %}
+    </div>
+  </div>
+  {% endif %}
 </body>
 </html>
