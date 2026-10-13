@@ -2,9 +2,6 @@
 {% block title %}Nimbus 2000{% endblock %}
 {% block content %}
 <section class="hero">
-  <div class="hero-badge">
-    <span class="badge-dot"></span> nexus aws
-  </div>
   {% if user %}
     <h1 class="hero-title">Welcome, {{ user.display_name }}</h1>
     <p class="hero-desc">You are competing as <strong style="color:var(--fg-bright);">@{{ user.username }}</strong> on <strong>Nimbus 2000</strong>.</p>

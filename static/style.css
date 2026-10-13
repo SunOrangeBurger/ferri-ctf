@@ -798,3 +798,161 @@ tr.rank-3 td {
   color: var(--muted);
   font-size: 0.82rem;
 }
+
+/* --------------------------------------------------------------------------
+   Minimal black, white and blue theme
+   Keep the existing layout and components; remove decorative effects.
+   -------------------------------------------------------------------------- */
+:root {
+  --c-midnight: #111827;
+  --c-mauve: #2563eb;
+  --c-pearl: #f3f4f6;
+  --c-sky: #60a5fa;
+  --c-slate: #374151;
+  --c-abyss: #090d14;
+
+  --bg: #090d14;
+  --fg: #d1d5db;
+  --fg-bright: #ffffff;
+  --muted: #93a4bb;
+  --muted-soft: #9ca3af;
+  --card: #111827;
+  --card-solid: #111827;
+  --card-hover: #172033;
+  --card-border: #273449;
+  --line: #273449;
+  --line-focus: #3b82f6;
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-fg: #ffffff;
+  --accent-gradient: #3b82f6;
+  --accent-glow: transparent;
+  --cyan: #60a5fa;
+  --badge-easy: #1e293b;
+  --badge-easy-fg: #bfdbfe;
+  --badge-med: #1e3a5f;
+  --badge-med-fg: #bfdbfe;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+body {
+  background: var(--bg);
+  background-image: none;
+}
+
+.nav,
+.site-footer {
+  background: #0d121c;
+  border-color: var(--line);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.brand-name {
+  background: none;
+  color: #fff;
+  -webkit-text-fill-color: currentColor;
+}
+
+.brand-byline,
+.brand-byline::before,
+.hero-badge,
+.footer-pill {
+  display: none;
+}
+
+.brand:hover,
+.feature-card:hover,
+.btn:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.card,
+.feature-card,
+.panel,
+.stat-card,
+.challenge-card {
+  background: var(--card);
+  border-color: var(--card-border);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.feature-card:hover {
+  border-color: #3b82f6;
+}
+
+.btn,
+button:not(.link) {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  box-shadow: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn:hover,
+button:not(.link):hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.btn.secondary {
+  background: transparent;
+  border-color: #46556b;
+  color: #e5e7eb;
+}
+
+.btn.secondary:hover {
+  background: #172033;
+  border-color: #64748b;
+}
+
+input,
+select,
+textarea {
+  background: #0b111b;
+  border-color: #374151;
+  color: #f9fafb;
+  box-shadow: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
+  outline: none;
+}
+
+a {
+  color: #60a5fa;
+}
+
+a:hover {
+  color: #93c5fd;
+}
+
+::selection {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.admin-link { color: var(--accent); font-weight: 700; }
+.nav-register { padding: 0.4rem 0.9rem; }
