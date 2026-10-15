@@ -119,6 +119,9 @@ Run the full unit and integration test suite:
 cargo test
 ```
 
+For repeatable local HTTP load tests with 50 teams and both operator/player
+workflows, see [Stress Testing](Documentation/STRESS_TESTING.md).
+
 Run Clippy code lints:
 ```bash
 cargo clippy --all-targets --all-features

@@ -98,7 +98,10 @@ pub async fn challenges_list(
         "SELECT c.id, c.title, c.description, c.category, c.difficulty,
                 c.points AS base_points, p.repeat_penalty,
                 (c.file_path IS NOT NULL) AS has_file,
-                (s.solved_at IS NOT NULL) AS is_solved, s.points_awarded
+                (s.solved_at IS NOT NULL) AS is_solved, s.points_awarded,
+                (SELECT COALESCE(SUM(h.point_cost), 0)
+                 FROM hint_usage hu JOIN hints h ON h.id = hu.hint_id
+                 WHERE hu.team_id = p.team_id AND h.challenge_id = c.id) AS hint_cost
          FROM team_challenge_pool p
          JOIN challenges c ON c.id = p.challenge_id
          LEFT JOIN solves s ON s.team_id = p.team_id AND s.challenge_id = c.id
@@ -125,7 +128,7 @@ pub async fn challenges_list(
         // the price snapshot. Omit it instead of indexing a missing quote.
         let Some(&base_pts) = price_map.get(&cid) else { continue; };
         let repeat_penalty: i64 = r.try_get("repeat_penalty")?;
-        let hint_cost = hints_svc::team_hint_cost_for_challenge(&state.db, team_id, &cid).await?;
+        let hint_cost: i64 = r.try_get("hint_cost")?;
         let effective = std::cmp::max(0, base_pts - repeat_penalty - hint_cost);
 
         challenges.push(PooledChallengeCard {

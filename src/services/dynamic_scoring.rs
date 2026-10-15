@@ -188,14 +188,37 @@ pub async fn prices(conn: &mut SqliteConnection, at: &str) -> AppResult<Vec<Chal
     )
     .fetch_all(&mut *conn)
     .await?;
+    // Polling is a hot path: fetch all state and availability clocks in two
+    // queries rather than two round trips per challenge for every open tab.
+    let mut states = HashMap::new();
+    let mut clocks = HashMap::new();
+    if enabled {
+        for price in sqlx::query_as::<_, PriceState>("SELECT * FROM challenge_pricing")
+            .fetch_all(&mut *conn)
+            .await?
+        {
+            states.insert(price.challenge_id.clone(), price);
+        }
+        for row in sqlx::query(
+            "SELECT a.challenge_id, SUM(MAX(0, CAST(ROUND((
+                julianday(min(?, COALESCE(a.closed_at, ?), COALESCE(r.ended_at, ?), COALESCE(r.auto_end_at, ?)))
+                - julianday(a.opened_at)) * 86400000) AS INTEGER))) AS active_ms
+             FROM challenge_availability a JOIN rounds r ON r.round_number = a.round_number
+             GROUP BY a.challenge_id")
+            .bind(at).bind(at).bind(at).bind(at).fetch_all(&mut *conn).await? {
+            clocks.insert(row.try_get::<String, _>("challenge_id")?, row.try_get::<i64, _>("active_ms")?);
+        }
+    }
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {
         let id: String = row.try_get("id")?;
         let difficulty: String = row.try_get("difficulty")?;
         let rule = &rule_map[&difficulty];
         let current_points = if enabled {
-            let price = load_price(conn, &id, rule).await?;
-            let clock = active_clock(conn, &id, at).await?;
+            let price = states
+                .remove(&id)
+                .unwrap_or_else(|| PriceState::initial(&id, rule));
+            let clock = clocks.get(&id).copied().unwrap_or(0);
             price.value(rule, clock) / SCALE
         } else {
             row.try_get("points")?

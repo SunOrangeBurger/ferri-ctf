@@ -462,3 +462,135 @@ fn invalid_rules_are_rejected() {
     r.drop_percent = 100;
     assert!(r.validate().is_err());
 }
+
+#[tokio::test]
+async fn batched_quotes_match_individual_clocks_and_persisted_prices() {
+    let (state, _dir) = fixture(true, 2).await;
+    submit(&state, "t0", "u0", "easy", "ferris{correct}")
+        .await
+        .unwrap();
+    override_points(&state.db, "hard", 800, "operator", "Quote parity")
+        .await
+        .unwrap();
+    let mut tx = state.db.begin().await.unwrap();
+    let at = now(&mut tx).await.unwrap();
+    let rules = rules(&mut tx).await.unwrap();
+    let quotes = prices(&mut tx, &at).await.unwrap();
+    for quote in quotes {
+        let rule = rules
+            .iter()
+            .find(|r| r.difficulty == quote.difficulty)
+            .unwrap();
+        let price = load_price(&mut tx, &quote.id, rule).await.unwrap();
+        let clock = active_clock(&mut tx, &quote.id, &at).await.unwrap();
+        assert_eq!(quote.current_points, price.value(rule, clock) / SCALE);
+    }
+}
+
+#[tokio::test]
+async fn concurrent_hint_unlocks_and_solves_never_grant_free_late_hints() {
+    let (state, _dir) = fixture(true, 50).await;
+    sqlx::query("INSERT INTO hints(id, challenge_id, content, point_cost) VALUES('race-hint', 'easy', 'hint', 10)")
+        .execute(&state.db).await.unwrap();
+    let mut tasks = Vec::new();
+    for i in 0..50 {
+        let state = state.clone();
+        tasks.push(tokio::spawn(async move {
+            let team = format!("t{i}");
+            let user = format!("u{i}");
+            let (hint, solve) = tokio::join!(
+                crate::services::hints::request_hint(&state.db, &team, "race-hint"),
+                submit(&state, &team, &user, "easy", "ferris{correct}")
+            );
+            assert_eq!(solve.unwrap(), "correct");
+            (team, hint.is_ok())
+        }));
+    }
+    let mut accepted = HashMap::new();
+    for task in tasks {
+        let (team, hint) = task.await.unwrap();
+        accepted.insert(team, hint);
+    }
+    let rows = sqlx::query(
+        "SELECT team_id, points_awarded FROM solves WHERE challenge_id = 'easy' ORDER BY rowid",
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap();
+    let mut price = PriceState::initial("easy", &easy());
+    for row in rows {
+        let team: String = row.get("team_id");
+        let gross = price.value(&easy(), 0);
+        let expected = gross / SCALE - if accepted[&team] { 10 } else { 0 };
+        assert_eq!(
+            row.get::<i64, _>("points_awarded"),
+            expected,
+            "hint/solve order for {team}"
+        );
+        price.after_solve(&easy(), 0, gross);
+    }
+}
+
+#[tokio::test]
+async fn inactive_challenge_hints_are_not_available() {
+    let (state, _dir) = fixture(true, 1).await;
+    sqlx::query("INSERT INTO hints(id, challenge_id, content, point_cost) VALUES('inactive-hint', 'easy', 'hint', 10)")
+        .execute(&state.db).await.unwrap();
+    sqlx::query("UPDATE challenges SET is_active = 0 WHERE id = 'easy'")
+        .execute(&state.db)
+        .await
+        .unwrap();
+    assert!(matches!(
+        crate::services::hints::request_hint(&state.db, "t0", "inactive-hint").await,
+        Err(AppError::NotFound(_))
+    ));
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM hint_usage")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn leaderboard_read_bursts_and_invalidations_preserve_completed_awards() {
+    let (state, _dir) = fixture(true, 50).await;
+    let mut tasks = Vec::new();
+    for i in 0..50 {
+        let solving_state = state.clone();
+        tasks.push(tokio::spawn(async move {
+            submit(
+                &solving_state,
+                &format!("t{i}"),
+                &format!("u{i}"),
+                "easy",
+                "ferris{correct}",
+            )
+            .await
+            .unwrap();
+        }));
+        let reading_state = state.clone();
+        tasks.push(tokio::spawn(async move {
+            for _ in 0..3 {
+                crate::services::scoring::get_scoreboard(&reading_state)
+                    .await
+                    .unwrap();
+            }
+        }));
+    }
+    for task in tasks {
+        task.await.unwrap();
+    }
+    let final_board = crate::services::scoring::get_scoreboard(&state)
+        .await
+        .unwrap();
+    for entry in final_board {
+        let total: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(points_awarded), 0) FROM solves WHERE team_id = ?",
+        )
+        .bind(&entry.team_id)
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+        assert_eq!(entry.total_score, total);
+    }
+}

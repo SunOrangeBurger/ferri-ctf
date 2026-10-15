@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
 
 use crate::{errors::AppResult, state::AppState};
 
@@ -56,9 +56,11 @@ pub async fn reached_score_at(
         events.push((r.try_get("ts")?, r.try_get("delta")?));
     }
 
-    if events.is_empty() {
-        return Ok(None);
-    }
+    Ok(reached_from_events(events, final_score))
+}
+
+fn reached_from_events(mut events: Vec<(String, i64)>, final_score: i64) -> Option<String> {
+    if events.is_empty() { return None; }
 
     // Chronological order
     events.sort_by(|a, b| a.0.cmp(&b.0));
@@ -73,15 +75,18 @@ pub async fn reached_score_at(
     // Earliest event after which the running total equals final_score and never changes again
     for i in 0..history.len() {
         if history[i..].iter().all(|(_, r)| *r == final_score) {
-            return Ok(Some(history[i].0.clone()));
+            return Some(history[i].0.clone());
         }
     }
 
-    Ok(None)
+    None
 }
 
 /// Compute full scoreboard ranking per spec 7.1 - 7.3.
 pub async fn compute_scoreboard(pool: &SqlitePool) -> AppResult<Vec<ScoreboardEntry>> {
+    // One snapshot for totals, members and history. Batching also avoids hundreds
+    // of pool acquisitions competing with player requests on a cold leaderboard.
+    let mut tx = pool.begin().await?;
     let rows = sqlx::query(
         "WITH solve_counts AS (
             SELECT challenge_id, COUNT(*) AS n_solves
@@ -124,27 +129,35 @@ pub async fn compute_scoreboard(pool: &SqlitePool) -> AppResult<Vec<ScoreboardEn
         LEFT JOIN adj     ON adj.team_id = t.id
         WHERE t.disbanded = 0 AND t.is_locked = 1",
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
+    let member_rows = sqlx::query(
+        "SELECT tm.team_id, u.display_name FROM users u
+         JOIN team_members tm ON tm.user_id = u.id
+         ORDER BY tm.team_id, CASE WHEN tm.role = 'captain' THEN 0 ELSE 1 END, tm.joined_at ASC")
+        .fetch_all(&mut *tx).await?;
+    let event_rows = sqlx::query(
+        "SELECT team_id, solved_at AS ts, points_awarded AS delta FROM solves WHERE points_awarded != 0
+         UNION ALL SELECT team_id, created_at AS ts, delta FROM score_adjustments WHERE delta != 0")
+        .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut members_by_team: HashMap<String, Vec<String>> = HashMap::new();
+    for row in member_rows {
+        members_by_team.entry(row.try_get("team_id")?).or_default().push(row.try_get("display_name")?);
+    }
+    let mut events_by_team: HashMap<String, Vec<(String, i64)>> = HashMap::new();
+    for row in event_rows {
+        events_by_team.entry(row.try_get("team_id")?).or_default().push((row.try_get("ts")?, row.try_get("delta")?));
+    }
     let mut entries = Vec::with_capacity(rows.len());
 
     for r in rows {
         let team_id: String = r.try_get("team_id")?;
         let total_score: i64 = r.try_get("total_score")?;
 
-        let members: Vec<String> = sqlx::query_scalar(
-            "SELECT u.display_name
-             FROM users u
-             JOIN team_members tm ON tm.user_id = u.id
-             WHERE tm.team_id = ?
-             ORDER BY (CASE WHEN tm.role = 'captain' THEN 0 ELSE 1 END), tm.joined_at ASC",
-        )
-        .bind(&team_id)
-        .fetch_all(pool)
-        .await?;
-
-        let reached_at = reached_score_at(pool, &team_id, total_score).await?;
+        let members = members_by_team.remove(&team_id).unwrap_or_default();
+        let reached_at = reached_from_events(events_by_team.remove(&team_id).unwrap_or_default(), total_score);
 
         entries.push(ScoreboardEntry {
             rank: 0,
@@ -202,11 +215,16 @@ pub async fn get_scoreboard(state: &AppState) -> AppResult<Vec<ScoreboardEntry>>
         }
     }
 
-    let fresh = compute_scoreboard(&state.db).await?;
-    {
-        let mut cache = state.scoreboard_cache.write().await;
-        *cache = Some((Instant::now(), fresh.clone()));
+    // One refresh at a time. Keep the cache lock through publication so an
+    // invalidation cannot be lost between computing and storing an old result.
+    let mut cache = state.scoreboard_cache.write().await;
+    if let Some((cached_at, ref entries)) = *cache {
+        if cached_at.elapsed() < ttl {
+            return Ok(entries.clone());
+        }
     }
+    let fresh = compute_scoreboard(&state.db).await?;
+    *cache = Some((Instant::now(), fresh.clone()));
     Ok(fresh)
 }
 
@@ -220,6 +238,33 @@ pub async fn invalidate_cache(state: &AppState) {
 mod tests {
     use super::*;
     use crate::state::test_support;
+
+    #[test]
+    fn adjustment_history_preserves_reached_score_timestamp() {
+        let events = vec![("t1".into(), 100), ("t3".into(), 10), ("t2".into(), -10)];
+        assert_eq!(reached_from_events(events, 100), Some("t3".into()));
+        assert_eq!(reached_from_events(vec![("t1".into(), 100)], 100), Some("t1".into()));
+        assert_eq!(reached_from_events(vec![], 0), None);
+    }
+
+    #[tokio::test]
+    async fn batched_scoreboard_matches_individual_histories_and_adjustments() {
+        let (state, _dir) = crate::services::dynamic_scoring::tests::fixture(true, 2).await;
+        crate::services::dynamic_scoring::submit(&state, "t0", "u0", "easy", "ferris{correct}").await.unwrap();
+        crate::services::dynamic_scoring::submit(&state, "t1", "u1", "hard", "ferris{correct}").await.unwrap();
+        sqlx::query("INSERT INTO score_adjustments(id,team_id,admin_id,delta,reason) VALUES
+            ('up','t0','operator', 20, 'bonus'), ('down','t1','operator', -10, 'penalty')")
+            .execute(&state.db).await.unwrap();
+        let board = compute_scoreboard(&state.db).await.unwrap();
+        assert_eq!(board.len(), 2);
+        assert_eq!(board[0].team_id, "t1");
+        assert_eq!(board[0].total_score, 690);
+        assert_eq!(board[1].total_score, 120);
+        for entry in board {
+            assert_eq!(entry.reached_score_at, reached_score_at(&state.db, &entry.team_id, entry.total_score).await.unwrap());
+            assert_eq!(entry.members.len(), 1);
+        }
+    }
 
     #[tokio::test]
     async fn test_scoring_and_tie_breaks() {

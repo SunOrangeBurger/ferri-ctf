@@ -115,6 +115,9 @@ visibility, and prior solves inside that transaction.
 
 Run `cargo test --locked`, `cargo check --locked`, and
 `cargo clippy --locked --all-targets --all-features`.
+For a disposable HTTP stress test of both roles, concurrent solves/edits,
+round transitions, and restart persistence, see
+[Stress testing](STRESS_TESTING.md) and `scripts/stress_scoring.py`.
 Tests cover the legacy static path, bounds/rounding, quiet periods, live edits,
 restart persistence, visibility/round pauses, 50 concurrent teams, duplicate
 solves, authorization/CSRF, and a deterministic six-hour model with 30 and 45
