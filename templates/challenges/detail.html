@@ -24,11 +24,11 @@
     </div>
     <div style="text-align:right;">
       <div style="font-size:1.75rem;font-weight:800;color:var(--cyan);">
-        {{ challenge.effective_points }} pts
+        <span {% if dynamic_scoring %}data-challenge-points="{{ challenge.id }}"{% endif %}>{% if challenge.is_solved %}{{ challenge.points_awarded }} pts earned{% else %}{{ challenge.effective_points }} pts{% endif %}</span>
       </div>
       {% if challenge.repeat_penalty > 0 or challenge.hint_cost > 0 %}
         <div class="hint" style="font-size:0.8rem;">
-          Base: {{ challenge.base_points }}
+          {% if dynamic_scoring %}Current value{% else %}Base{% endif %}: <span {% if dynamic_scoring %}data-challenge-gross="{{ challenge.id }}"{% endif %}>{{ challenge.base_points }}</span>
           {% if challenge.repeat_penalty > 0 %}| -{{ challenge.repeat_penalty }} repeat{% endif %}
           {% if challenge.hint_cost > 0 %}| -{{ challenge.hint_cost }} hints{% endif %}
         </div>
@@ -48,7 +48,7 @@
 
   {% if challenge.is_solved %}
     <div class="alert good" style="margin-top:1.5rem;">
-      <strong>Solved!</strong> Your team scored <strong>{{ challenge.points_awarded | default(challenge.effective_points, true) }} points</strong> for this challenge.
+      <strong>Solved!</strong> Your team scored <strong>{{ challenge.points_awarded }} points</strong> for this challenge.
     </div>
   {% else %}
     <div style="margin-top: 2rem;">
@@ -99,5 +99,9 @@
     {% endfor %}
   </div>
 </div>
+{% endif %}
+{% if dynamic_scoring %}
+<p class="hint" data-price-status aria-live="polite">Points refresh every 10 seconds. The value at submission time determines your award.</p>
+<script src="/static/challenge-points.js" defer></script>
 {% endif %}
 {% endblock %}

@@ -10,14 +10,14 @@ use axum::{
 use minijinja::context;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
-use uuid::Uuid;
+use std::collections::HashMap;
 
 use crate::{
     errors::{AppError, AppResult},
     middleware::{auth::AuthUser, csrf_guard::CsrfCtx},
     ratelimit,
     services::{
-        files as files_svc, hints as hints_svc, rounds, scoring, verifier,
+        files as files_svc, hints as hints_svc, rounds, dynamic_scoring,
     },
     state::AppState,
     templates::UserView,
@@ -51,6 +51,7 @@ pub struct PooledChallengeCard {
     pub effective_points: i64,
     pub has_file: bool,
     pub is_solved: bool,
+    pub points_awarded: Option<i64>,
 }
 
 /// GET /challenges — Pooled challenges for current round
@@ -97,7 +98,7 @@ pub async fn challenges_list(
         "SELECT c.id, c.title, c.description, c.category, c.difficulty,
                 c.points AS base_points, p.repeat_penalty,
                 (c.file_path IS NOT NULL) AS has_file,
-                (s.solved_at IS NOT NULL) AS is_solved
+                (s.solved_at IS NOT NULL) AS is_solved, s.points_awarded
          FROM team_challenge_pool p
          JOIN challenges c ON c.id = p.challenge_id
          LEFT JOIN solves s ON s.team_id = p.team_id AND s.challenge_id = c.id
@@ -110,10 +111,19 @@ pub async fn challenges_list(
     .fetch_all(&state.db)
     .await?;
 
+    let mut price_tx = state.db.begin().await?;
+    let dynamic = dynamic_scoring::settings(&mut price_tx).await?.enabled;
+    let at = dynamic_scoring::now(&mut price_tx).await?;
+    let price_map: HashMap<_, _> = dynamic_scoring::prices(&mut price_tx, &at).await?
+        .into_iter().map(|p| (p.id, p.current_points)).collect();
+    price_tx.commit().await?;
+
     let mut challenges = Vec::with_capacity(rows.len());
     for r in rows {
         let cid: String = r.try_get("id")?;
-        let base_pts: i64 = r.try_get("base_points")?;
+        // A challenge can be deleted by the operator between the pool query and
+        // the price snapshot. Omit it instead of indexing a missing quote.
+        let Some(&base_pts) = price_map.get(&cid) else { continue; };
         let repeat_penalty: i64 = r.try_get("repeat_penalty")?;
         let hint_cost = hints_svc::team_hint_cost_for_challenge(&state.db, team_id, &cid).await?;
         let effective = std::cmp::max(0, base_pts - repeat_penalty - hint_cost);
@@ -130,6 +140,7 @@ pub async fn challenges_list(
             effective_points: effective,
             has_file: r.try_get("has_file")?,
             is_solved: r.try_get("is_solved")?,
+            points_awarded: r.try_get("points_awarded")?,
         });
     }
 
@@ -141,6 +152,7 @@ pub async fn challenges_list(
             challenges => challenges,
             active_round => active_round,
             is_between_rounds => false,
+            dynamic_scoring => dynamic,
         },
     )?;
 
@@ -186,7 +198,12 @@ pub async fn challenge_detail(
     .await?
     .ok_or_else(|| AppError::NotFound("Challenge not in current pool".into()))?;
 
-    let base_pts: i64 = row.try_get("base_points")?;
+    let mut price_tx = state.db.begin().await?;
+    let dynamic = dynamic_scoring::settings(&mut price_tx).await?.enabled;
+    let at = dynamic_scoring::now(&mut price_tx).await?;
+    let base_pts = dynamic_scoring::prices(&mut price_tx, &at).await?.into_iter()
+        .find(|p| p.id == challenge_id).ok_or_else(|| AppError::NotFound("Challenge".into()))?.current_points;
+    price_tx.commit().await?;
     let repeat_penalty: i64 = row.try_get("repeat_penalty")?;
     let is_solved: bool = row.try_get("is_solved")?;
     let points_awarded: Option<i64> = row.try_get("points_awarded")?;
@@ -218,6 +235,7 @@ pub async fn challenge_detail(
             },
             hints => hints,
             status_msg => query.status,
+            dynamic_scoring => dynamic,
             active_round => active_round,
         },
     )?;
@@ -306,85 +324,8 @@ pub async fn submit_flag(
         return Err(AppError::TooManyRequests);
     }
 
-    let active_round = rounds::get_active_round(&state.db)
-        .await?
-        .ok_or_else(|| AppError::Forbidden("No round is currently active".into()))?;
-
-    // Check challenge in pool, team locked, challenge active
-    let pool_row = sqlx::query(
-        "SELECT c.id, c.points, c.flag_hmac, c.flag_salt, p.repeat_penalty
-         FROM team_challenge_pool p
-         JOIN challenges c ON c.id = p.challenge_id
-         JOIN teams t ON t.id = p.team_id
-         WHERE p.team_id = ? AND c.id = ? AND p.round_number = ?
-           AND c.is_active = 1 AND t.is_locked = 1 AND t.disbanded = 0",
-    )
-    .bind(team_id)
-    .bind(&challenge_id)
-    .bind(active_round.round_number)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Challenge not in current round pool".into()))?;
-
-    // Check if already solved
-    let is_already_solved: bool = sqlx::query_scalar::<_, i64>(
-        "SELECT 1 FROM solves WHERE team_id = ? AND challenge_id = ?",
-    )
-    .bind(team_id)
-    .bind(&challenge_id)
-    .fetch_optional(&state.db)
-    .await?
-    .is_some();
-
-    if is_already_solved {
-        return Ok(Redirect::to(&format!("/challenges/{challenge_id}?status=already_solved")).into_response());
-    }
-
-    let stored_hmac: String = pool_row.try_get("flag_hmac")?;
-    let salt: String = pool_row.try_get("flag_salt")?;
-    let base_points: i64 = pool_row.try_get("points")?;
-    let repeat_penalty: i64 = pool_row.try_get("repeat_penalty")?;
-
-    let is_correct = verifier::verify_flag(&state.keys.flag, &salt, &form.flag, &stored_hmac);
-    let submitted_hash = verifier::hash_submission(&state.keys.flag, &form.flag);
-
-    let sub_id = Uuid::new_v4().to_string();
-    sqlx::query(
-        "INSERT INTO submissions (id, team_id, user_id, challenge_id, is_correct, submitted_hash)
-         VALUES (?, ?, ?, ?, ?, ?)",
-    )
-    .bind(&sub_id)
-    .bind(team_id)
-    .bind(&user.user_id)
-    .bind(&challenge_id)
-    .bind(is_correct)
-    .bind(&submitted_hash)
-    .execute(&state.db)
-    .await?;
-
-    if !is_correct {
-        return Ok(Redirect::to(&format!("/challenges/{challenge_id}?status=incorrect")).into_response());
-    }
-
-    // Correct flag! Calculate points awarded
-    let hint_cost = hints_svc::team_hint_cost_for_challenge(&state.db, team_id, &challenge_id).await?;
-    let points_awarded = std::cmp::max(0, base_points - repeat_penalty - hint_cost);
-
-    sqlx::query(
-        "INSERT INTO solves (team_id, challenge_id, user_id, round_number, points_awarded, solved_at)
-         VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-    )
-    .bind(team_id)
-    .bind(&challenge_id)
-    .bind(&user.user_id)
-    .bind(active_round.round_number)
-    .bind(points_awarded)
-    .execute(&state.db)
-    .await?;
-
-    scoring::invalidate_cache(&state).await;
-
-    Ok(Redirect::to(&format!("/challenges/{challenge_id}?status=correct")).into_response())
+    let status = dynamic_scoring::submit(&state, team_id, &user.user_id, &challenge_id, &form.flag).await?;
+    Ok(Redirect::to(&format!("/challenges/{challenge_id}?status={status}")).into_response())
 }
 
 /// POST /challenges/:id/hint — Request hint unlock
