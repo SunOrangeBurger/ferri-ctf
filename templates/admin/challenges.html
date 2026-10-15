@@ -7,6 +7,7 @@
     <div class="hint">Upload new challenges, toggle visibility, manage hints, and delete challenges.</div>
   </div>
   <div>
+    <a href="/admin/scoring" class="btn secondary">Scoring Controls</a>
     <a href="/admin/dashboard" class="btn secondary">← Back to Dashboard</a>
   </div>
 </div>
@@ -39,7 +40,7 @@
       </div>
 
       <div>
-        <label for="points">Points</label>
+        <label for="points">Static points (dynamic mode uses difficulty rules)</label>
         <input id="points" name="points" type="number" required min="0" value="100">
 
         <label for="flag">Flag (Exact answer)</label>
@@ -82,7 +83,7 @@
           <th>Title</th>
           <th>Category</th>
           <th>Difficulty</th>
-          <th>Points</th>
+          <th>Static points</th>
           <th>File</th>
           <th>Status</th>
           <th>Add Hint</th>

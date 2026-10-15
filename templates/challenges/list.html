@@ -38,7 +38,7 @@
       <div class="flex-between" style="margin-bottom:0.75rem;">
         <span class="badge {{ c.difficulty }}">{{ c.difficulty }}</span>
         <span style="font-weight:700;color:var(--cyan);font-size:1.1rem;">
-          {{ c.effective_points }} pts
+          <span {% if dynamic_scoring %}data-challenge-points="{{ c.id }}"{% endif %}>{% if c.is_solved %}{{ c.points_awarded }} pts earned{% else %}{{ c.effective_points }} pts{% endif %}</span>
         </span>
       </div>
       <h3 style="margin-bottom:0.4rem;">
@@ -73,5 +73,9 @@
   <h2>No Challenges in Pool</h2>
   <p class="hint">Your team currently has no challenges assigned for this round.</p>
 </div>
+{% endif %}
+{% if dynamic_scoring %}
+<p class="hint" data-price-status aria-live="polite">Points refresh every 10 seconds. The value at submission time determines your award.</p>
+<script src="/static/challenge-points.js" defer></script>
 {% endif %}
 {% endblock %}

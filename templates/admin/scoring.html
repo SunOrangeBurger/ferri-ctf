@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Scoring Controls — Nimbus 2000{% endblock %}
+{% block content %}
+<div class="flex-between" style="margin-bottom:1.5rem;gap:1rem;flex-wrap:wrap;">
+  <h1>Scoring Controls</h1>
+  <a href="/admin/dashboard" class="btn secondary">Admin Dashboard</a>
+</div>
+<div class="card">
+  <h2>Scoring mode</h2>
+  <p>Current mode: <strong>{% if settings.enabled %}Dynamic{% else %}Static{% endif %}</strong>.</p>
+  {% if started %}
+    <p class="hint">The scoring mode is fixed for this event. Rules and current dynamic points remain editable below.</p>
+  {% else %}
+  <form method="post" action="/admin/scoring">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="mode">
+    <input type="hidden" name="revision" value="{{ settings.revision }}">
+    <label for="mode">Mode for this event</label>
+    <select id="mode" name="enabled">
+      <option value="0" {% if not settings.enabled %}selected{% endif %}>Static — use each challenge's saved points</option>
+      <option value="1" {% if settings.enabled %}selected{% endif %}>Dynamic — use the difficulty rules below</option>
+    </select>
+    <label for="mode-reason">Reason</label>
+    <input id="mode-reason" name="reason" required maxlength="1000">
+    <button type="submit">Save mode</button>
+  </form>
+  {% endif %}
+</div>
+<div class="card">
+  <h2>Difficulty rules</h2>
+  <p class="hint">Starting points apply to newly released challenges. Live rule edits preserve accrued recovery, then apply the new rates and bounds. Earned team scores stay fixed. Every save is audited.</p>
+  {% for r in rules %}
+  <form method="post" action="/admin/scoring" style="border-top:1px solid var(--line);padding:1rem 0;">
+    <h3><span class="badge {{ r.difficulty }}">{{ r.difficulty }}</span></h3>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="rule">
+    <input type="hidden" name="revision" value="{{ settings.revision }}">
+    <input type="hidden" name="difficulty" value="{{ r.difficulty }}">
+    <div class="grid">
+      {% for field, label in [('starting_points','Starting points'), ('minimum_points','Minimum points'), ('maximum_points','Maximum points'), ('quiet_minutes','Quiet period (minutes)'), ('recovery_per_minute','Recovery (points/minute)'), ('drop_percent','Drop on solve (% above minimum)')] %}
+      <div>
+        <label for="{{ r.difficulty }}-{{ field }}">{{ label }}</label>
+        <input id="{{ r.difficulty }}-{{ field }}" name="{{ field }}" type="number" required
+          min="{% if field in ['quiet_minutes','recovery_per_minute','drop_percent'] %}1{% else %}0{% endif %}"
+          max="{% if field == 'quiet_minutes' %}10080{% elif field == 'drop_percent' %}99{% else %}1000000{% endif %}"
+          value="{{ r[field] }}">
+      </div>
+      {% endfor %}
+    </div>
+    <label for="{{ r.difficulty }}-reason">Reason for change</label>
+    <input id="{{ r.difficulty }}-reason" name="reason" required maxlength="1000">
+    <button type="submit">Save {{ r.difficulty }} rule</button>
+  </form>
+  {% endfor %}
+</div>
+{% if settings.enabled %}
+<div class="card">
+  <h2>Current challenge points</h2>
+  <p class="hint">Values are a snapshot at page load. Overrides affect future solves, restart the quiet period, and allow recovery up to the configured maximum until the next solve. Existing awards remain unchanged.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Challenge</th><th>Difficulty</th><th>Current / bounds</th><th>Set current points</th></tr></thead>
+    <tbody>
+    {% for c in challenges %}
+    <tr>
+      <td>{{ c.title }}</td><td><span class="badge {{ c.difficulty }}">{{ c.difficulty }}</span></td>
+      <td>{{ c.current_points }} / {{ c.minimum_points }}–{{ c.maximum_points }}</td>
+      <td><form method="post" action="/admin/scoring/challenges/{{ c.id }}/points">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="points-{{ c.id }}">New points</label>
+        <input id="points-{{ c.id }}" name="points" type="number" required min="{{ c.minimum_points }}" max="{{ c.maximum_points }}" value="{{ c.current_points }}">
+        <label for="reason-{{ c.id }}">Reason</label>
+        <input id="reason-{{ c.id }}" name="reason" required maxlength="1000">
+        <button type="submit" class="secondary">Set points</button>
+      </form></td>
+    </tr>
+    {% else %}<tr><td colspan="4">No challenges uploaded.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

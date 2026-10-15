@@ -34,6 +34,7 @@ const REQUIRED: &[&str] = &[
     "admin/teams.html",
     "admin/rounds.html",
     "admin/challenges.html",
+    "admin/scoring.html",
     "admin/admins.html",
     "admin/audit.html",
     "onboarding/index.html",

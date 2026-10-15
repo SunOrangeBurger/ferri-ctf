@@ -2,34 +2,39 @@ use sqlx::SqlitePool;
 
 use crate::{
     errors::{AppError, AppResult},
-    models::{Hint, HintView},
-    services::rounds,
+    models::{Hint, HintView, Round},
 };
 
 /// Request a hint for a challenge by a team member.
 /// Any member's request unlocks it for the entire team.
 /// Re-requesting an already unlocked hint returns the hint without charging again.
-pub async fn request_hint(
-    pool: &SqlitePool,
-    team_id: &str,
-    hint_id: &str,
-) -> AppResult<Hint> {
+pub async fn request_hint(pool: &SqlitePool, team_id: &str, hint_id: &str) -> AppResult<Hint> {
+    // Serialize with solve acceptance: a hint must be charged before a solve or
+    // rejected afterwards, never unlocked for free by a stale eligibility read.
+    let mut tx = super::dynamic_scoring::write_transaction(pool).await?;
     // 1. A round must be active
-    let active_round = rounds::get_active_round(pool)
-        .await?
-        .ok_or_else(|| AppError::Forbidden("No round is currently active".into()))?;
+    let active_round = sqlx::query_as::<_, Round>(
+        "SELECT round_number, started_at, time_limit_minutes, auto_end_at, ended_at
+         FROM rounds WHERE ended_at IS NULL
+           AND (auto_end_at IS NULL OR auto_end_at > strftime('%Y-%m-%d %H:%M:%f', 'now'))
+         ORDER BY round_number DESC LIMIT 1",
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::Forbidden("No round is currently active".into()))?;
 
     // 2. Team must be locked
-    let is_locked: bool = sqlx::query_scalar(
-        "SELECT is_locked FROM teams WHERE id = ? AND disbanded = 0",
-    )
-    .bind(team_id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Team not found".into()))?;
+    let is_locked: bool =
+        sqlx::query_scalar("SELECT is_locked FROM teams WHERE id = ? AND disbanded = 0")
+            .bind(team_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Team not found".into()))?;
 
     if !is_locked {
-        return Err(AppError::Forbidden("Team must be locked to view challenges and hints".into()));
+        return Err(AppError::Forbidden(
+            "Team must be locked to view challenges and hints".into(),
+        ));
     }
 
     // 3. Find the hint and its challenge
@@ -38,38 +43,41 @@ pub async fn request_hint(
          FROM hints WHERE id = ?",
     )
     .bind(hint_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?
     .ok_or_else(|| AppError::NotFound("Hint not found".into()))?;
 
     // 4. Challenge must be in team's pool for active round
     let in_pool: bool = sqlx::query_scalar::<_, i64>(
-        "SELECT 1 FROM team_challenge_pool
-         WHERE team_id = ? AND challenge_id = ? AND round_number = ?",
+        "SELECT 1 FROM team_challenge_pool p JOIN challenges c ON c.id = p.challenge_id
+         WHERE p.team_id = ? AND p.challenge_id = ? AND p.round_number = ? AND c.is_active = 1",
     )
     .bind(team_id)
     .bind(&hint.challenge_id)
     .bind(active_round.round_number)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?
     .is_some();
 
     if !in_pool {
-        return Err(AppError::NotFound("Challenge not in current round pool".into()));
+        return Err(AppError::NotFound(
+            "Challenge not in current round pool".into(),
+        ));
     }
 
     // 5. Challenge must not already be solved
-    let is_solved: bool = sqlx::query_scalar::<_, i64>(
-        "SELECT 1 FROM solves WHERE team_id = ? AND challenge_id = ?",
-    )
-    .bind(team_id)
-    .bind(&hint.challenge_id)
-    .fetch_optional(pool)
-    .await?
-    .is_some();
+    let is_solved: bool =
+        sqlx::query_scalar::<_, i64>("SELECT 1 FROM solves WHERE team_id = ? AND challenge_id = ?")
+            .bind(team_id)
+            .bind(&hint.challenge_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .is_some();
 
     if is_solved {
-        return Err(AppError::Forbidden("Cannot request hints for an already solved challenge".into()));
+        return Err(AppError::Forbidden(
+            "Cannot request hints for an already solved challenge".into(),
+        ));
     }
 
     // 6. Record hint usage if not already recorded
@@ -79,9 +87,10 @@ pub async fn request_hint(
     )
     .bind(team_id)
     .bind(hint_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
+    tx.commit().await?;
     Ok(hint)
 }
 
@@ -100,12 +109,11 @@ pub async fn get_hints_for_challenge(
     .fetch_all(pool)
     .await?;
 
-    let unlocked_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT hint_id FROM hint_usage WHERE team_id = ?",
-    )
-    .bind(team_id)
-    .fetch_all(pool)
-    .await?;
+    let unlocked_ids: Vec<String> =
+        sqlx::query_scalar("SELECT hint_id FROM hint_usage WHERE team_id = ?")
+            .bind(team_id)
+            .fetch_all(pool)
+            .await?;
 
     let views = hints
         .into_iter()

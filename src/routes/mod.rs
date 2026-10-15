@@ -5,6 +5,7 @@ pub mod onboarding;
 pub mod pages;
 pub mod profile;
 pub mod scoreboard;
+pub mod scoring_controls;
 pub mod team;
 
 use std::sync::Arc;
@@ -31,6 +32,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/logout", post(auth::logout))
         .route("/scoreboard", get(scoreboard::scoreboard_page))
         .route("/api/scoreboard", get(scoreboard::scoreboard_json))
+        .route("/api/challenges/points", get(scoring_controls::player_prices))
         .route("/admin/login", get(auth::admin_login_page).post(auth::admin_login_submit))
 
         // Onboarding routes
@@ -68,6 +70,8 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/admin/audit", get(admin::audit_log_page))
 
         // Ferris-level routes
+        .route("/admin/scoring", get(scoring_controls::page).post(scoring_controls::save))
+        .route("/admin/scoring/challenges/:id/points", post(scoring_controls::override_points))
         .route("/admin/event/start", post(admin::start_event_submit))
         .route("/admin/rounds", get(admin::rounds_page))
         .route("/admin/rounds/start", post(admin::start_next_round_submit))
