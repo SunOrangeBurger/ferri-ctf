@@ -185,7 +185,7 @@ pub async fn challenge_detail(
     let row = sqlx::query(
         "SELECT c.id, c.title, c.description, c.category, c.difficulty,
                 c.points AS base_points, p.repeat_penalty,
-                (c.file_path IS NOT NULL) AS has_file, c.file_name,
+                (c.file_path IS NOT NULL) AS has_file, c.file_name, c.challenge_url,
                 (s.solved_at IS NOT NULL) AS is_solved, s.points_awarded
          FROM team_challenge_pool p
          JOIN challenges c ON c.id = p.challenge_id
@@ -233,6 +233,7 @@ pub async fn challenge_detail(
                 effective_points => effective,
                 has_file => row.try_get::<bool, _>("has_file")?,
                 file_name => row.try_get::<Option<String>, _>("file_name")?,
+                challenge_url => row.try_get::<Option<String>, _>("challenge_url")?,
                 is_solved => is_solved,
                 points_awarded => points_awarded,
             },

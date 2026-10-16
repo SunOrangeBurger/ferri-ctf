@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod challenge_links;
 pub mod dynamic_scoring;
 pub mod files;
 pub mod hints;

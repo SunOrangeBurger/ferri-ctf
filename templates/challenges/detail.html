@@ -38,6 +38,15 @@
 
   <div style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:1.5rem 0;margin:1rem 0;line-height:1.7;white-space:pre-wrap;">{{ challenge.description }}</div>
 
+  {% if challenge.challenge_url %}
+  <div style="margin: 1.25rem 0;">
+    <a href="{{ challenge.challenge_url }}" class="btn" target="_blank" rel="noopener noreferrer">
+      Open challenge website ↗
+    </a>
+    <p class="hint">Opens in a new tab. Follow the organizer's access instructions, then submit the recovered flag here.</p>
+  </div>
+  {% endif %}
+
   {% if challenge.has_file %}
   <div style="margin: 1.25rem 0;">
     <a href="/challenges/{{ challenge.id }}/download" class="btn secondary" style="display:inline-flex;align-items:center;gap:0.5rem;">
