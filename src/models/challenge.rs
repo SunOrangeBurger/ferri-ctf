@@ -13,6 +13,7 @@ pub struct Challenge {
     pub flag_salt: String,
     pub file_path: Option<String>,
     pub file_name: Option<String>,
+    pub challenge_url: Option<String>,
     pub is_active: bool,
     pub created_at: String,
 }

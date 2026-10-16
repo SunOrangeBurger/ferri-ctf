@@ -42,6 +42,7 @@ dotenvy = "0.15"
 thiserror = "1.0"
 anyhow = "1.0"
 num_cpus = "1.16"
+url = "2"
 
 # Logging
 tracing = "0.1"

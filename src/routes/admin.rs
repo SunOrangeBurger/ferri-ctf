@@ -19,6 +19,7 @@ use crate::{
     },
     models::{AuditLog, Challenge, EventState, Round},
     services::{
+        challenge_links::validate_challenge_url,
         files as files_svc,
         rounds as rounds_svc,
         scoring,
@@ -71,6 +72,11 @@ pub struct EditChallengeForm {
     pub category: String,
     pub points: i64,
     pub is_active: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct ChallengeWebsiteForm {
+    pub challenge_url: String,
 }
 
 #[derive(Deserialize)]
@@ -633,7 +639,7 @@ pub async fn challenges_admin_page(
 ) -> AppResult<Response> {
     let challenges = sqlx::query_as::<_, Challenge>(
         "SELECT id, title, description, category, difficulty, points,
-                flag_hmac, flag_salt, file_path, file_name, is_active, created_at
+                flag_hmac, flag_salt, file_path, file_name, challenge_url, is_active, created_at
          FROM challenges ORDER BY created_at DESC",
     )
     .fetch_all(&state.db)
@@ -662,6 +668,7 @@ pub async fn create_challenge_submit(
     let mut difficulty = String::new();
     let mut points: i64 = 0;
     let mut flag = String::new();
+    let mut challenge_url = String::new();
     let mut file_data: Option<(String, Vec<u8>)> = None;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| AppError::BadRequest(e.to_string()))? {
@@ -676,6 +683,7 @@ pub async fn create_challenge_submit(
                 points = pts_str.trim().parse::<i64>().unwrap_or(0);
             }
             "flag" => flag = field.text().await.map_err(|e| AppError::BadRequest(e.to_string()))?,
+            "challenge_url" => challenge_url = field.text().await.map_err(|e| AppError::BadRequest(e.to_string()))?,
             "file" => {
                 let filename = field.file_name().map(|s| s.to_string());
                 let bytes = field.bytes().await.map_err(|e| AppError::BadRequest(e.to_string()))?;
@@ -695,6 +703,7 @@ pub async fn create_challenge_submit(
     if !matches!(diff_norm.as_str(), "easy" | "medium" | "hard") {
         return Err(AppError::BadRequest("Difficulty must be easy, medium, or hard".into()));
     }
+    let challenge_url = validate_challenge_url(&challenge_url)?;
 
     let challenge_id = Uuid::new_v4().to_string();
     let flag_salt = verifier::generate_salt();
@@ -715,8 +724,8 @@ pub async fn create_challenge_submit(
 
     sqlx::query(
         "INSERT INTO challenges (id, title, description, category, difficulty, points,
-                                 flag_hmac, flag_salt, file_path, file_name, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                 flag_hmac, flag_salt, file_path, file_name, challenge_url, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
     )
     .bind(&challenge_id)
     .bind(title.trim())
@@ -728,6 +737,7 @@ pub async fn create_challenge_submit(
     .bind(&flag_salt)
     .bind(stored_path)
     .bind(safe_file_name)
+    .bind(challenge_url)
     .execute(&state.db)
     .await?;
 
@@ -741,6 +751,35 @@ pub async fn create_challenge_submit(
     )
     .await?;
 
+    Ok(Redirect::to("/admin/challenges").into_response())
+}
+
+/// POST /admin/challenges/:id/website — Change only the launch URL.
+/// An empty field removes the link without changing flags, files, pools or scores.
+pub async fn set_challenge_website(
+    State(state): State<Arc<AppState>>,
+    FerrisUser(ferris): FerrisUser,
+    Path(challenge_id): Path<String>,
+    Form(form): Form<ChallengeWebsiteForm>,
+) -> AppResult<Response> {
+    let challenge_url = validate_challenge_url(&form.challenge_url)?;
+    let result = sqlx::query("UPDATE challenges SET challenge_url = ? WHERE id = ?")
+        .bind(challenge_url)
+        .bind(&challenge_id)
+        .execute(&state.db)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Challenge".into()));
+    }
+    rounds_svc::record_audit_log(
+        &state.db,
+        &ferris.user_id,
+        "set_challenge_website",
+        Some("challenge"),
+        Some(&challenge_id),
+        None,
+    )
+    .await?;
     Ok(Redirect::to("/admin/challenges").into_response())
 }
 

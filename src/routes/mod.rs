@@ -8,6 +8,9 @@ pub mod scoreboard;
 pub mod scoring_controls;
 pub mod team;
 
+#[cfg(test)]
+mod challenge_websites_tests;
+
 use std::sync::Arc;
 
 use axum::{
@@ -83,6 +86,7 @@ pub fn router() -> Router<Arc<AppState>> {
             post(admin::create_challenge_submit).layer(DefaultBodyLimit::max(35 * 1024 * 1024)),
         )
         .route("/admin/challenges/:id/edit", post(admin::edit_challenge_submit))
+        .route("/admin/challenges/:id/website", post(admin::set_challenge_website))
         .route("/admin/challenges/:id/toggle", post(admin::toggle_challenge_submit))
         .route("/admin/challenges/bulk", post(admin::bulk_challenge_submit))
         .route("/admin/challenges/:id/delete", post(admin::delete_challenge_submit))

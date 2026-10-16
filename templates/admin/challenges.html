@@ -48,6 +48,11 @@
 
         <label for="file">Challenge ZIP File (Max 30MB, optional)</label>
         <input id="file" name="file" type="file" accept=".zip">
+
+        <label for="challenge_url">Challenge website (optional)</label>
+        <input id="challenge_url" name="challenge_url" type="url" maxlength="2048"
+          placeholder="https://q01.example.org/">
+        <p class="hint">For an interactive question, enter its running website's address. ZIP files are downloadable attachments.</p>
       </div>
     </div>
 
@@ -85,6 +90,7 @@
           <th>Difficulty</th>
           <th>Static points</th>
           <th>File</th>
+          <th>Website</th>
           <th>Status</th>
           <th>Add Hint</th>
           <th>Actions</th>
@@ -99,6 +105,17 @@
           <td><span class="badge {{ c.difficulty }}">{{ c.difficulty }}</span></td>
           <td><strong>{{ c.points }}</strong></td>
           <td class="hint">{{ c.file_name | default("None", true) }}</td>
+          <td>
+            <form method="post" action="/admin/challenges/{{ c.id }}/website">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <label for="website-{{ c.id }}" class="hint">Challenge website</label>
+              <input id="website-{{ c.id }}" name="challenge_url" type="url" maxlength="2048"
+                value="{{ c.challenge_url | default('', true) }}" placeholder="https://q01.example.org/"
+                style="min-width:14rem;font-size:0.85rem;">
+              <button type="submit" class="secondary" style="margin:0;padding:0.25rem 0.5rem;font-size:0.8rem;">Save website</button>
+              <div class="hint">Leave blank to remove.</div>
+            </form>
+          </td>
           <td>
             {% if c.is_active %}
             <span class="badge easy">Active</span>
@@ -138,7 +155,7 @@
         {% endfor %}
         {% else %}
         <tr>
-          <td colspan="8" class="center hint" style="padding: 2rem;">No challenges uploaded yet.</td>
+          <td colspan="9" class="center hint" style="padding: 2rem;">No challenges uploaded yet.</td>
         </tr>
         {% endif %}
       </tbody>
