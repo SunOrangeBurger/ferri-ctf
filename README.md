@@ -12,6 +12,7 @@ Designed for resilience, security, and low operational complexity, FerrisCTF run
 - **Dynamic Challenge Allocation**: Difficulty-based quota pooling per team (`Easy`, `Medium`, `Hard`) ensuring fair challenge distribution.
 - **Secure Flag Verification**: Constant-time HMAC-based flag validation with salt to prevent timing attacks and flag leakage.
 - **Hosted Question Links**: Optional launch buttons connect live question websites to the existing challenge, round, and flag-submission flow. See [Hosted Challenges](Documentation/HOSTED_CHALLENGES.md).
+- **Ordered Question Packages**: A local organizer tool prepares the supplied 15 questions as separate participant uploads and private setup records. See [Question Bundles](Documentation/QUESTION_BUNDLES.md).
 - **Scoring & Real-Time Scoreboard**: Dynamic score tracking, solve history, manual score adjustments, tie-breaking by solve timestamps, and cached JSON scoreboard endpoints.
 - **Optional Live Challenge Prices**: Difficulty-based recovery and solve drops, fixed earned awards, and live Ferris-only scoring controls. Disabled by default; see [Dynamic Scoring](Documentation/DYNAMIC_SCORING.md) for setup, defaults, and behavior.
 - **Multi-Level Role Gate**:

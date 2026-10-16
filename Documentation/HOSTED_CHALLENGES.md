@@ -1,5 +1,8 @@
 # Connecting hosted question websites
 
+For the supplied 15-question archive, the optional [question packager](QUESTION_BUNDLES.md)
+prepares ordered participant ZIPs and separate private setup records locally.
+
 FerrisCTF remains the contest platform: players sign in, join teams, receive a
 round's challenge pool, download participant files, and submit recovered flags.
 An interactive question can also have a **Challenge website** URL. Eligible
