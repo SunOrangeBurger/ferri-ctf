@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::{
@@ -62,6 +63,20 @@ pub struct RoundControlForm {
     pub action: String, // "start" | "end" | "limit"
     pub round_number: Option<i64>,
     pub time_limit_minutes: Option<i64>,
+    /// Comma-separated selective challenge IDs (up to 5)
+    pub selective_ids: Option<String>,
+    /// Allow reusing selectives that were used in prior rounds
+    pub force_reuse: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RoundAdminView {
+    pub round_number: i64,
+    pub started_at: String,
+    pub time_limit_minutes: Option<i64>,
+    pub auto_end_at: Option<String>,
+    pub ended_at: Option<String>,
+    pub selectives: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -551,9 +566,21 @@ pub async fn start_event_submit(
     FerrisUser(ferris): FerrisUser,
     Form(form): Form<RoundControlForm>,
 ) -> AppResult<Response> {
-    rounds_svc::start_event(&state, form.time_limit_minutes, &ferris.user_id).await?;
+    let selective_ids = parse_selective_ids(&form.selective_ids);
+    let force_reuse = form.force_reuse.as_deref().map(|v| v == "true" || v == "on" || v == "1").unwrap_or(false);
+    rounds_svc::start_event(&state, form.time_limit_minutes, &ferris.user_id, &selective_ids, force_reuse).await?;
     scoring::invalidate_cache(&state).await;
     Ok(Redirect::to("/admin/rounds").into_response())
+}
+
+/// Parse comma-separated selective IDs from form field.
+fn parse_selective_ids(raw: &Option<String>) -> Vec<String> {
+    raw.as_deref()
+        .unwrap_or("")
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 /// GET /admin/rounds
@@ -562,12 +589,43 @@ pub async fn rounds_page(
     FerrisUser(ferris): FerrisUser,
     ctx: CsrfCtx,
 ) -> AppResult<Response> {
-    let rounds = sqlx::query_as::<_, Round>(
+    let rounds_raw = sqlx::query_as::<_, Round>(
         "SELECT round_number, started_at, time_limit_minutes, auto_end_at, ended_at
          FROM rounds ORDER BY round_number DESC",
     )
     .fetch_all(&state.db)
     .await?;
+
+    let selective_assignments = sqlx::query(
+        "SELECT rs.round_number, c.title
+         FROM round_selectives rs
+         JOIN challenges c ON c.id = rs.challenge_id
+         ORDER BY rs.round_number DESC, c.title ASC",
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let mut selectives_by_round: HashMap<i64, Vec<String>> = HashMap::new();
+    for row in selective_assignments {
+        let r_num: i64 = row.try_get("round_number")?;
+        let title: String = row.try_get("title")?;
+        selectives_by_round.entry(r_num).or_default().push(title);
+    }
+
+    let rounds: Vec<RoundAdminView> = rounds_raw
+        .into_iter()
+        .map(|r| {
+            let selectives = selectives_by_round.remove(&r.round_number).unwrap_or_default();
+            RoundAdminView {
+                round_number: r.round_number,
+                started_at: r.started_at,
+                time_limit_minutes: r.time_limit_minutes,
+                auto_end_at: r.auto_end_at,
+                ended_at: r.ended_at,
+                selectives,
+            }
+        })
+        .collect();
 
     let event_state = sqlx::query_as::<_, EventState>(
         "SELECT id, scheduled_start, started_at FROM event_state WHERE id = 1",
@@ -577,6 +635,30 @@ pub async fn rounds_page(
 
     let active_round = rounds_svc::get_active_round(&state.db).await?;
 
+    // Available selectives: active, is_selective, NOT already used in any round
+    let available_selectives = sqlx::query_as::<_, Challenge>(
+        "SELECT id, title, description, category, difficulty, points,
+                flag_hmac, flag_salt, file_path, file_name, is_active, is_selective, created_at
+         FROM challenges
+         WHERE is_selective = 1 AND is_active = 1
+           AND id NOT IN (SELECT challenge_id FROM round_selectives)
+         ORDER BY title ASC",
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    // Used selectives (for "force reuse" display)
+    let used_selectives = sqlx::query_as::<_, Challenge>(
+        "SELECT id, title, description, category, difficulty, points,
+                flag_hmac, flag_salt, file_path, file_name, is_active, is_selective, created_at
+         FROM challenges
+         WHERE is_selective = 1
+           AND id IN (SELECT challenge_id FROM round_selectives)
+         ORDER BY title ASC",
+    )
+    .fetch_all(&state.db)
+    .await?;
+
     let page = state.templates.render(
         "admin/rounds.html",
         context! {
@@ -585,6 +667,8 @@ pub async fn rounds_page(
             rounds => rounds,
             event_state => event_state,
             active_round => active_round,
+            available_selectives => available_selectives,
+            used_selectives => used_selectives,
         },
     )?;
     Ok(page.into_response())
@@ -596,7 +680,9 @@ pub async fn start_next_round_submit(
     FerrisUser(ferris): FerrisUser,
     Form(form): Form<RoundControlForm>,
 ) -> AppResult<Response> {
-    rounds_svc::start_round(&state, form.time_limit_minutes, &ferris.user_id).await?;
+    let selective_ids = parse_selective_ids(&form.selective_ids);
+    let force_reuse = form.force_reuse.as_deref().map(|v| v == "true" || v == "on" || v == "1").unwrap_or(false);
+    rounds_svc::start_round(&state, form.time_limit_minutes, &ferris.user_id, &selective_ids, force_reuse).await?;
     scoring::invalidate_cache(&state).await;
     Ok(Redirect::to("/admin/rounds").into_response())
 }
@@ -633,7 +719,7 @@ pub async fn challenges_admin_page(
 ) -> AppResult<Response> {
     let challenges = sqlx::query_as::<_, Challenge>(
         "SELECT id, title, description, category, difficulty, points,
-                flag_hmac, flag_salt, file_path, file_name, is_active, created_at
+                flag_hmac, flag_salt, file_path, file_name, is_active, is_selective, created_at
          FROM challenges ORDER BY created_at DESC",
     )
     .fetch_all(&state.db)
@@ -662,6 +748,7 @@ pub async fn create_challenge_submit(
     let mut difficulty = String::new();
     let mut points: i64 = 0;
     let mut flag = String::new();
+    let mut is_selective = false;
     let mut file_data: Option<(String, Vec<u8>)> = None;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| AppError::BadRequest(e.to_string()))? {
@@ -676,6 +763,10 @@ pub async fn create_challenge_submit(
                 points = pts_str.trim().parse::<i64>().unwrap_or(0);
             }
             "flag" => flag = field.text().await.map_err(|e| AppError::BadRequest(e.to_string()))?,
+            "is_selective" => {
+                let val = field.text().await.map_err(|e| AppError::BadRequest(e.to_string()))?;
+                is_selective = val == "on" || val == "1" || val == "true";
+            }
             "file" => {
                 let filename = field.file_name().map(|s| s.to_string());
                 let bytes = field.bytes().await.map_err(|e| AppError::BadRequest(e.to_string()))?;
@@ -715,8 +806,8 @@ pub async fn create_challenge_submit(
 
     sqlx::query(
         "INSERT INTO challenges (id, title, description, category, difficulty, points,
-                                 flag_hmac, flag_salt, file_path, file_name, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                                 flag_hmac, flag_salt, file_path, file_name, is_active, is_selective)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
     )
     .bind(&challenge_id)
     .bind(title.trim())
@@ -728,6 +819,7 @@ pub async fn create_challenge_submit(
     .bind(&flag_salt)
     .bind(stored_path)
     .bind(safe_file_name)
+    .bind(is_selective)
     .execute(&state.db)
     .await?;
 

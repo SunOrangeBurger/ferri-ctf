@@ -19,6 +19,9 @@
   <div class="flex-between" style="flex-wrap:wrap;gap:1rem;margin-bottom:1rem;">
     <div>
       <span class="badge {{ challenge.difficulty }}">{{ challenge.difficulty }}</span>
+      {% if challenge.is_selective %}
+        <span class="badge" style="background:#f59e0b;color:#1e293b;font-weight:600;margin-left:0.25rem;">⭐ Selective</span>
+      {% endif %}
       <span class="hint" style="margin-left:0.5rem;">{{ challenge.category }}</span>
       <h1 style="margin:0.5rem 0 0;">{{ challenge.title }}</h1>
     </div>

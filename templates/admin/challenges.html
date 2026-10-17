@@ -48,6 +48,13 @@
 
         <label for="file">Challenge ZIP File (Max 30MB, optional)</label>
         <input id="file" name="file" type="file" accept=".zip">
+
+        <div style="margin-top:0.75rem;">
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
+            <input type="checkbox" id="is_selective" name="is_selective" value="true">
+            <span><strong>⭐ Mark as Selective</strong> <span class="hint">(Excluded from random pool; assigned manually per round)</span></span>
+          </label>
+        </div>
       </div>
     </div>
 
@@ -94,7 +101,12 @@
         {% if challenges %}
         {% for c in challenges %}
         <tr>
-          <td><strong>{{ c.title }}</strong></td>
+          <td>
+            <strong>{{ c.title }}</strong>
+            {% if c.is_selective %}
+            <span class="badge" style="background:#f59e0b;color:#1e293b;font-weight:600;margin-left:0.35rem;font-size:0.75rem;">⭐ Selective</span>
+            {% endif %}
+          </td>
           <td>{{ c.category }}</td>
           <td><span class="badge {{ c.difficulty }}">{{ c.difficulty }}</span></td>
           <td><strong>{{ c.points }}</strong></td>

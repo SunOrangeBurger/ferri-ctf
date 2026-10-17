@@ -82,13 +82,13 @@ pub async fn assign_round_pool(
 
     let (quota_easy, quota_med, quota_hard) = difficulty_quotas(pool_size, DIFFICULTY_SPLIT);
 
-    // Fetch active challenges not solved by this team, grouped by difficulty
+    // Fetch active NON-selective challenges not solved by this team, grouped by difficulty
     let fetch_tier = |diff: &'static str| {
         let tid = team_id.to_string();
         async move {
             sqlx::query_scalar::<_, String>(
                 "SELECT id FROM challenges
-                 WHERE is_active = 1 AND difficulty = ?
+                 WHERE is_active = 1 AND is_selective = 0 AND difficulty = ?
                    AND id NOT IN (SELECT challenge_id FROM solves WHERE team_id = ?)",
             )
             .bind(diff)
@@ -155,7 +155,73 @@ pub async fn assign_round_pool(
     Ok(pool_entries)
 }
 
-/// Assign challenge pools to all locked and active teams for a given round.
+/// Assign 2 randomly-chosen selectives from the round's selective set to a single team.
+/// Selectives always have repeat_penalty = 0 (they are admin-curated, not randomly recurring).
+pub async fn assign_selectives_for_team(
+    pool: &SqlitePool,
+    team_id: &str,
+    round_number: i64,
+) -> AppResult<Vec<TeamChallengePool>> {
+    // Fetch the selective challenge IDs chosen for this round
+    let mut selective_ids = sqlx::query_scalar::<_, String>(
+        "SELECT challenge_id FROM round_selectives WHERE round_number = ?",
+    )
+    .bind(round_number)
+    .fetch_all(pool)
+    .await?;
+
+    if selective_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Shuffle and pick 2 (or fewer if less than 2 available)
+    {
+        let mut rng = rand::rngs::OsRng;
+        selective_ids.shuffle(&mut rng);
+    }
+    let chosen: Vec<String> = selective_ids.into_iter().take(2).collect();
+
+    let mut entries = Vec::with_capacity(chosen.len());
+    for cid in chosen {
+        // Skip if this team already has this challenge in this round's pool
+        // (e.g., if assign was called twice)
+        let already: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM team_challenge_pool
+             WHERE team_id = ? AND round_number = ? AND challenge_id = ?",
+        )
+        .bind(team_id)
+        .bind(round_number)
+        .bind(&cid)
+        .fetch_one(pool)
+        .await?;
+
+        if already > 0 {
+            continue;
+        }
+
+        sqlx::query(
+            "INSERT INTO team_challenge_pool (team_id, round_number, challenge_id, repeat_penalty)
+             VALUES (?, ?, ?, 0)",
+        )
+        .bind(team_id)
+        .bind(round_number)
+        .bind(&cid)
+        .execute(pool)
+        .await?;
+
+        entries.push(TeamChallengePool {
+            team_id: team_id.to_string(),
+            round_number,
+            challenge_id: cid,
+            repeat_penalty: 0,
+            assigned_at: String::new(),
+        });
+    }
+
+    Ok(entries)
+}
+
+/// Assign challenge pools (standard + selectives) to all locked and active teams for a given round.
 pub async fn assign_pools_for_round(
     pool: &SqlitePool,
     round_number: i64,
@@ -169,8 +235,9 @@ pub async fn assign_pools_for_round(
     .await?;
 
     let mut count = 0;
-    for tid in team_ids {
-        assign_round_pool(pool, &tid, round_number, pool_size, repeat_penalty_points).await?;
+    for tid in &team_ids {
+        assign_round_pool(pool, tid, round_number, pool_size, repeat_penalty_points).await?;
+        assign_selectives_for_team(pool, tid, round_number).await?;
         count += 1;
     }
 
@@ -194,5 +261,35 @@ mod tests {
 
         // Pool size 1
         assert_eq!(difficulty_quotas(1, [60, 30, 10]), (1, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn test_pool_excludes_selectives() {
+        let (state, _dir) = crate::state::test_support::state().await;
+        let u1 = crate::services::auth::register(&state, "user_one", "User One", "Pass123456").await.unwrap();
+        let t1 = crate::services::team::create_team(&state.db, &u1, "Team Alpha", 30).await.unwrap();
+
+        // Insert 1 normal easy challenge and 1 selective easy challenge
+        sqlx::query(
+            "INSERT INTO challenges (id, title, description, category, difficulty, points, flag_hmac, flag_salt, is_active, is_selective)
+             VALUES ('normal-easy', 'Normal Easy', 'desc', 'Misc', 'easy', 100, 'hmac', 'salt', 1, 0),
+                    ('sel-easy', 'Selective Easy', 'desc', 'Misc', 'easy', 100, 'hmac', 'salt', 1, 1)"
+        )
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+        // Insert round 1 for FK constraint
+        sqlx::query("INSERT INTO rounds (round_number, started_at) VALUES (1, datetime('now'))")
+            .execute(&state.db)
+            .await
+            .unwrap();
+
+        // assign_round_pool with quota requiring easy challenges
+        let entries = assign_round_pool(&state.db, &t1.id, 1, 5, 10).await.unwrap();
+        let ids: Vec<&str> = entries.iter().map(|e| e.challenge_id.as_str()).collect();
+
+        assert!(ids.contains(&"normal-easy"));
+        assert!(!ids.contains(&"sel-easy"), "Selective challenges must never be included in standard assign_round_pool");
     }
 }

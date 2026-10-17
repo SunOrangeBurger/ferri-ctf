@@ -36,7 +36,12 @@
   <div class="card interactive" style="display:flex;flex-direction:column;justify-content:space-between;{% if c.is_solved %}border-color:var(--green);{% endif %}">
     <div>
       <div class="flex-between" style="margin-bottom:0.75rem;">
-        <span class="badge {{ c.difficulty }}">{{ c.difficulty }}</span>
+        <div>
+          <span class="badge {{ c.difficulty }}">{{ c.difficulty }}</span>
+          {% if c.is_selective %}
+            <span class="badge" style="background:#f59e0b;color:#1e293b;font-weight:600;margin-left:0.25rem;">⭐ Selective</span>
+          {% endif %}
+        </div>
         <span style="font-weight:700;color:var(--cyan);font-size:1.1rem;">
           <span {% if dynamic_scoring %}data-challenge-points="{{ c.id }}"{% endif %}>{% if c.is_solved %}{{ c.points_awarded }} pts earned{% else %}{{ c.effective_points }} pts{% endif %}</span>
         </span>

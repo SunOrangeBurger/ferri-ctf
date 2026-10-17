@@ -52,6 +52,7 @@ pub struct PooledChallengeCard {
     pub has_file: bool,
     pub is_solved: bool,
     pub points_awarded: Option<i64>,
+    pub is_selective: bool,
 }
 
 /// GET /challenges — Pooled challenges for current round
@@ -101,12 +102,14 @@ pub async fn challenges_list(
                 (s.solved_at IS NOT NULL) AS is_solved, s.points_awarded,
                 (SELECT COALESCE(SUM(h.point_cost), 0)
                  FROM hint_usage hu JOIN hints h ON h.id = hu.hint_id
-                 WHERE hu.team_id = p.team_id AND h.challenge_id = c.id) AS hint_cost
+                 WHERE hu.team_id = p.team_id AND h.challenge_id = c.id) AS hint_cost,
+                c.is_selective
          FROM team_challenge_pool p
          JOIN challenges c ON c.id = p.challenge_id
          LEFT JOIN solves s ON s.team_id = p.team_id AND s.challenge_id = c.id
          WHERE p.team_id = ? AND p.round_number = ? AND c.is_active = 1
-         ORDER BY (CASE c.difficulty WHEN 'easy' THEN 1 WHEN 'medium' THEN 2 WHEN 'hard' THEN 3 ELSE 4 END) ASC,
+         ORDER BY (CASE WHEN c.is_selective = 1 THEN 0 ELSE 1 END) ASC,
+                  (CASE c.difficulty WHEN 'easy' THEN 1 WHEN 'medium' THEN 2 WHEN 'hard' THEN 3 ELSE 4 END) ASC,
                   c.points ASC",
     )
     .bind(team_id)
@@ -144,6 +147,7 @@ pub async fn challenges_list(
             has_file: r.try_get("has_file")?,
             is_solved: r.try_get("is_solved")?,
             points_awarded: r.try_get("points_awarded")?,
+            is_selective: r.try_get("is_selective")?,
         });
     }
 
@@ -186,7 +190,8 @@ pub async fn challenge_detail(
         "SELECT c.id, c.title, c.description, c.category, c.difficulty,
                 c.points AS base_points, p.repeat_penalty,
                 (c.file_path IS NOT NULL) AS has_file, c.file_name,
-                (s.solved_at IS NOT NULL) AS is_solved, s.points_awarded
+                (s.solved_at IS NOT NULL) AS is_solved, s.points_awarded,
+                c.is_selective
          FROM team_challenge_pool p
          JOIN challenges c ON c.id = p.challenge_id
          JOIN teams t ON t.id = p.team_id
@@ -235,6 +240,7 @@ pub async fn challenge_detail(
                 file_name => row.try_get::<Option<String>, _>("file_name")?,
                 is_solved => is_solved,
                 points_awarded => points_awarded,
+                is_selective => row.try_get::<bool, _>("is_selective")?,
             },
             hints => hints,
             status_msg => query.status,

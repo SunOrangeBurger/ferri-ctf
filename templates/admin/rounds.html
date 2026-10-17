@@ -33,6 +33,54 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label for="event_limit">Round 1 Time Limit (Minutes, optional)</label>
         <input id="event_limit" name="time_limit_minutes" type="number" min="1" placeholder="e.g. 60 (leave empty for no limit)">
+
+        <!-- Selectives Picker for Event / Round 1 -->
+        <div style="margin-top: 1.25rem; border: 1px solid var(--line); border-radius: 6px; padding: 1rem; background: rgba(255,255,255,0.02);">
+          <div class="flex-between" style="align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div>
+              <strong>⭐ Round 1 Selectives</strong>
+              <div class="hint" style="font-size:0.8rem;">Pick up to 5. Each team will receive a random 2 of these 5.</div>
+            </div>
+            <span class="badge secondary" id="sel-count-badge-event">0 / 5 selected</span>
+          </div>
+
+          <input type="hidden" name="selective_ids" id="selective_ids_event" value="">
+
+          {% if available_selectives %}
+            <div style="max-height: 180px; overflow-y: auto; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; padding-right: 0.25rem;">
+              {% for c in available_selectives %}
+                <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.5rem; border-radius: 4px; background: var(--bg); cursor: pointer; border: 1px solid var(--line);">
+                  <input type="checkbox" class="sel-cb-event" value="{{ c.id }}" onchange="updateSelectives('event')">
+                  <span style="font-weight: 600; font-size: 0.9rem;">{{ c.title }}</span>
+                  <span class="badge {{ c.difficulty }}" style="font-size: 0.75rem;">{{ c.difficulty }}</span>
+                  <span class="hint" style="font-size: 0.75rem;">{{ c.category }} · {{ c.points }} pts</span>
+                </label>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="hint" style="font-size: 0.85rem; padding: 0.5rem 0;">No unused selective challenges available in challenge bank.</div>
+          {% endif %}
+
+          {% if used_selectives %}
+            <div style="margin-top: 0.75rem; border-top: 1px dashed var(--line); padding-top: 0.75rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer;">
+                <input type="checkbox" name="force_reuse" id="force_reuse_event" value="true" onchange="toggleUsedSelectives('event')">
+                <span><strong>Allow reusing previously used selectives</strong> (override lockout)</span>
+              </label>
+              <div id="used_container_event" style="display: none; max-height: 140px; overflow-y: auto; margin-top: 0.5rem; flex-direction: column; gap: 0.4rem; padding-right: 0.25rem;">
+                {% for c in used_selectives %}
+                  <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.5rem; border-radius: 4px; background: var(--bg); cursor: pointer; border: 1px solid var(--line); opacity: 0.85;">
+                    <input type="checkbox" class="sel-cb-event used-cb-event" value="{{ c.id }}" disabled onchange="updateSelectives('event')">
+                    <span style="font-weight: 600; font-size: 0.9rem;">{{ c.title }}</span>
+                    <span class="badge {{ c.difficulty }}" style="font-size: 0.75rem;">{{ c.difficulty }}</span>
+                    <span class="badge secondary" style="font-size: 0.7rem;">Used in prior round</span>
+                  </label>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+
         <button type="submit" style="width:100%;margin-top:1rem;" onclick="return confirm('Launch the event and start Round 1? This will lock all registered teams!');">
           Start Event (Round 1)
         </button>
@@ -83,6 +131,54 @@
         <input type="hidden" name="action" value="start">
         <label for="next_limit">Time Limit (Minutes, optional)</label>
         <input id="next_limit" name="time_limit_minutes" type="number" min="1" placeholder="e.g. 60">
+
+        <!-- Selectives Picker for Next Round -->
+        <div style="margin-top: 1.25rem; border: 1px solid var(--line); border-radius: 6px; padding: 1rem; background: rgba(255,255,255,0.02);">
+          <div class="flex-between" style="align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div>
+              <strong>⭐ Round Selectives</strong>
+              <div class="hint" style="font-size:0.8rem;">Pick up to 5. Each team will receive a random 2 of these 5.</div>
+            </div>
+            <span class="badge secondary" id="sel-count-badge-round">0 / 5 selected</span>
+          </div>
+
+          <input type="hidden" name="selective_ids" id="selective_ids_round" value="">
+
+          {% if available_selectives %}
+            <div style="max-height: 180px; overflow-y: auto; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; padding-right: 0.25rem;">
+              {% for c in available_selectives %}
+                <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.5rem; border-radius: 4px; background: var(--bg); cursor: pointer; border: 1px solid var(--line);">
+                  <input type="checkbox" class="sel-cb-round" value="{{ c.id }}" onchange="updateSelectives('round')">
+                  <span style="font-weight: 600; font-size: 0.9rem;">{{ c.title }}</span>
+                  <span class="badge {{ c.difficulty }}" style="font-size: 0.75rem;">{{ c.difficulty }}</span>
+                  <span class="hint" style="font-size: 0.75rem;">{{ c.category }} · {{ c.points }} pts</span>
+                </label>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="hint" style="font-size: 0.85rem; padding: 0.5rem 0;">No unused selective challenges available in challenge bank.</div>
+          {% endif %}
+
+          {% if used_selectives %}
+            <div style="margin-top: 0.75rem; border-top: 1px dashed var(--line); padding-top: 0.75rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer;">
+                <input type="checkbox" name="force_reuse" id="force_reuse_round" value="true" onchange="toggleUsedSelectives('round')">
+                <span><strong>Allow reusing previously used selectives</strong> (override lockout)</span>
+              </label>
+              <div id="used_container_round" style="display: none; max-height: 140px; overflow-y: auto; margin-top: 0.5rem; flex-direction: column; gap: 0.4rem; padding-right: 0.25rem;">
+                {% for c in used_selectives %}
+                  <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.5rem; border-radius: 4px; background: var(--bg); cursor: pointer; border: 1px solid var(--line); opacity: 0.85;">
+                    <input type="checkbox" class="sel-cb-round used-cb-round" value="{{ c.id }}" disabled onchange="updateSelectives('round')">
+                    <span style="font-weight: 600; font-size: 0.9rem;">{{ c.title }}</span>
+                    <span class="badge {{ c.difficulty }}" style="font-size: 0.75rem;">{{ c.difficulty }}</span>
+                    <span class="badge secondary" style="font-size: 0.7rem;">Used in prior round</span>
+                  </label>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+
         <button type="submit" style="width:100%;margin-top:1rem;">
           Start Next Round
         </button>
@@ -102,6 +198,7 @@
           <th>Round #</th>
           <th>Started At</th>
           <th>Time Limit</th>
+          <th>Selectives</th>
           <th>Auto-End At</th>
           <th>Ended At</th>
           <th>Status</th>
@@ -114,6 +211,17 @@
             <td><strong>Round {{ r.round_number }}</strong></td>
             <td>{{ r.started_at }}</td>
             <td>{% if r.time_limit_minutes %}{{ r.time_limit_minutes }} min{% else %}—{% endif %}</td>
+            <td>
+              {% if r.selectives %}
+                <div style="display:flex; flex-wrap:wrap; gap:0.25rem;">
+                  {% for title in r.selectives %}
+                    <span class="badge" style="background:rgba(245,158,11,0.2);color:#fbbf24;font-size:0.75rem;border:1px solid rgba(245,158,11,0.3);">⭐ {{ title }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <span class="hint">—</span>
+              {% endif %}
+            </td>
             <td class="hint">{{ r.auto_end_at | default("—", true) }}</td>
             <td class="hint">{{ r.ended_at | default("—", true) }}</td>
             <td>
@@ -127,11 +235,60 @@
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="6" class="center hint" style="padding: 2rem;">No rounds created yet.</td>
+            <td colspan="7" class="center hint" style="padding: 2rem;">No rounds created yet.</td>
           </tr>
         {% endif %}
       </tbody>
     </table>
   </div>
 </div>
+
+<script>
+function updateSelectives(prefix) {
+  const cbs = document.querySelectorAll('.sel-cb-' + prefix + ':checked');
+  const allCbs = document.querySelectorAll('.sel-cb-' + prefix);
+  const badge = document.getElementById('sel-count-badge-' + prefix);
+  const hiddenInput = document.getElementById('selective_ids_' + prefix);
+
+  const selectedIds = Array.from(cbs).map(cb => cb.value);
+  if (hiddenInput) {
+    hiddenInput.value = selectedIds.join(',');
+  }
+  if (badge) {
+    badge.textContent = selectedIds.length + ' / 5 selected';
+    if (selectedIds.length === 5) {
+      badge.className = 'badge easy';
+    } else {
+      badge.className = 'badge secondary';
+    }
+  }
+
+  // If 5 selected, disable unchecked checkboxes to enforce max 5
+  allCbs.forEach(cb => {
+    if (!cb.checked && selectedIds.length >= 5) {
+      cb.disabled = true;
+    } else if (!cb.classList.contains('used-cb-' + prefix) || (document.getElementById('force_reuse_' + prefix) && document.getElementById('force_reuse_' + prefix).checked)) {
+      cb.disabled = false;
+    }
+  });
+}
+
+function toggleUsedSelectives(prefix) {
+  const forceReuse = document.getElementById('force_reuse_' + prefix);
+  const container = document.getElementById('used_container_' + prefix);
+  const usedCbs = document.querySelectorAll('.used-cb-' + prefix);
+
+  if (forceReuse && forceReuse.checked) {
+    if (container) container.style.display = 'flex';
+    usedCbs.forEach(cb => cb.disabled = false);
+  } else {
+    if (container) container.style.display = 'none';
+    usedCbs.forEach(cb => {
+      cb.checked = false;
+      cb.disabled = true;
+    });
+  }
+  updateSelectives(prefix);
+}
+</script>
 {% endblock %}

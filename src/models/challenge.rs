@@ -14,7 +14,14 @@ pub struct Challenge {
     pub file_path: Option<String>,
     pub file_name: Option<String>,
     pub is_active: bool,
+    pub is_selective: bool,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct RoundSelective {
+    pub round_number: i64,
+    pub challenge_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
