@@ -1,0 +1,1 @@
+Red-channel values are byte indices. Restore order with index_order.json and map through lookup.json.

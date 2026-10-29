@@ -1,0 +1,8 @@
+{
+  "id": 6,
+  "title": "Checksum Canvas",
+  "category": "Image Decryption",
+  "difficulty": "Hard",
+  "flag": "nexus{verify_before_trusting}",
+  "intended_method": "Image pixel extraction with challenge-specific channel/order transform."
+}

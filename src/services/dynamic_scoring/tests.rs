@@ -53,8 +53,18 @@ pub(crate) async fn fixture(enabled: bool, teams: usize) -> (Arc<AppState>, temp
             .await
             .unwrap();
         for challenge in ["easy", "medium", "hard"] {
-            sqlx::query("INSERT INTO team_challenge_pool (team_id, round_number, challenge_id) VALUES (?, 1, ?)")
-                .bind(format!("t{i}")).bind(challenge).execute(&state.db).await.unwrap();
+            sqlx::query(
+                "INSERT INTO team_challenge_pool
+                 (team_id, round_number, challenge_id, opportunity_points)
+                 SELECT ?, 1, c.id, r.maximum_points
+                 FROM challenges c JOIN difficulty_scoring_rules r ON r.difficulty = c.difficulty
+                 WHERE c.id = ?",
+            )
+            .bind(format!("t{i}"))
+            .bind(challenge)
+            .execute(&state.db)
+            .await
+            .unwrap();
         }
     }
     (state, dir)
@@ -251,9 +261,18 @@ async fn wrong_flags_deductions_zero_awards_and_static_mode() {
             .unwrap();
         assert_eq!(
             award(&state, "t0", "easy").await,
-            if enabled { 70 } else { 93 }
+            if enabled { 80 } else { 103 }
         );
         sqlx::query("UPDATE team_challenge_pool SET repeat_penalty = 1000 WHERE team_id = 't1'")
+            .execute(&state.db)
+            .await
+            .unwrap();
+        // Legacy repeat penalties are ignored; hint costs can still reduce an award to zero.
+        sqlx::query("UPDATE hints SET point_cost = 1000 WHERE id = 'hint'")
+            .execute(&state.db)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO hint_usage(team_id, hint_id) VALUES ('t1', 'hint')")
             .execute(&state.db)
             .await
             .unwrap();

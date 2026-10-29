@@ -1,0 +1,1 @@
+Extract green LSBs row-major. Stop at first NUL; trailing pixels are padding noise.

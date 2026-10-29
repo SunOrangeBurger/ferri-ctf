@@ -1,0 +1,8 @@
+{
+  "id": 28,
+  "title": "Manifest Destiny",
+  "category": "Integrity / Forensics",
+  "difficulty": "Hard",
+  "flag": "nexus{manifest_is_the_source_of_truth}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

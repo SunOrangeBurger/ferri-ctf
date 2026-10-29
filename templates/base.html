@@ -31,7 +31,11 @@
       {% endif %}
     </nav>
   </header>
-  <main>{% block content %}{% endblock %}</main>
+  <main>
+    {% if user %}<div id="team-notices" aria-live="assertive"></div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  {% if user %}<script src="/static/team-notices.js" defer></script>{% endif %}
   <footer class="site-footer">
     <div class="footer-inner">
       <div class="footer-brand">

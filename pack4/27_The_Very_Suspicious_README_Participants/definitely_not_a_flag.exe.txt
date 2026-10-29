@@ -1,0 +1,3 @@
+!!! CRITICAL EXECUTABLE !!!
+This file is plain text. Do not run it.
+Message: read_the_file_not_the_drama

@@ -1,0 +1,8 @@
+{
+  "id": 18,
+  "title": "The Broken Breadcrumb",
+  "category": "Web / Source Inspection",
+  "difficulty": "Medium",
+  "flag": "nexus{source_is_not_rendering}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

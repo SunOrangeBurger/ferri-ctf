@@ -1,0 +1,8 @@
+{
+  "id": 25,
+  "title": "The Overconfident Bot",
+  "category": "Encoding / Analysis",
+  "difficulty": "Medium",
+  "flag": "nexus{known_plaintext_is_a_tool}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

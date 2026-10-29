@@ -1,0 +1,13 @@
+{
+  "ciphertext_hex": "000000000015110f1a2c000a0c1000310a16102c05000108",
+  "key_fragments": [
+    {
+      "time": "09:02",
+      "fragment": "ne"
+    },
+    {
+      "time": "09:03",
+      "fragment": "xus"
+    }
+  ]
+}

@@ -11,6 +11,30 @@
   </div>
 </div>
 
+<div class="card" style="margin-bottom:1.5rem;">
+  <h2>LAST ROUND</h2>
+  <p>Give every team every challenge in the bank, including previously solved questions, with Florida Man omitted. No difficulty quotas or selective limits apply.</p>
+  <p class="hint">End the current round first. LAST ROUND can start once, and no further rounds can follow it.</p>
+  <form method="post" action="/admin/rounds/last">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Time limit in minutes (optional)</label>
+    <input type="number" name="time_limit_minutes" min="1" placeholder="No time limit">
+    <button type="submit" class="btn danger" {% if active_round or last_round_started or not event_state.started_at %}disabled{% endif %}>Start LAST ROUND</button>
+    {% if last_round_started %}<p class="hint">LAST ROUND has already started. No further rounds can start.</p>{% endif %}
+  </form>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <h2>Backlog Round</h2>
+  <p>Reveal the active question set assigned to the team that has seen the most questions to every team. Previously solved questions appear as solved for that team. Ties use the earliest-created team. Normal rounds can continue afterward.</p>
+  <form method="post" action="/admin/rounds/backlog">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="backlog_limit">Time limit in minutes (optional)</label>
+    <input id="backlog_limit" type="number" name="time_limit_minutes" min="1" placeholder="No time limit">
+    <button type="submit" class="btn" {% if active_round or last_round_started or not event_state.started_at %}disabled{% endif %}>Start Backlog Round</button>
+  </form>
+</div>
+
 <div class="grid-2">
   <div class="card">
     <h2>Event State</h2>
@@ -31,8 +55,17 @@
       </div>
       <form method="post" action="/admin/event/start">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="action" value="start">
         <label for="event_limit">Round 1 Time Limit (Minutes, optional)</label>
         <input id="event_limit" name="time_limit_minutes" type="number" min="1" placeholder="e.g. 60 (leave empty for no limit)">
+
+        <label style="display:flex;align-items:flex-start;gap:0.6rem;margin-top:1rem;cursor:pointer;">
+          <input type="checkbox" name="selective_only" value="true" style="margin-top:0.2rem;">
+          <span>
+            <strong>Start as a selectives-only round</strong>
+            <span class="hint" style="display:block;font-size:0.8rem;">Every team sees the same 5 selective challenges and no standard challenges. Select exactly 5 below, or leave all unchecked to choose 5 automatically.</span>
+          </span>
+        </label>
 
         <!-- Selectives Picker for Event / Round 1 -->
         <div style="margin-top: 1.25rem; border: 1px solid var(--line); border-radius: 6px; padding: 1rem; background: rgba(255,255,255,0.02);">
@@ -93,6 +126,11 @@
     {% if active_round %}
       <div style="margin-bottom:1rem;">
         <span class="badge medium" style="font-size:0.9rem;">Round {{ active_round.round_number }} Active</span>
+        {% if active_round.is_backlog_round %}<span class="badge medium">Backlog Round</span>{% endif %}
+        {% if active_round.is_last_round %}<span class="badge hard">LAST ROUND</span>{% endif %}
+        {% if active_round.is_selective_only %}
+          <span class="badge" style="background:rgba(245,158,11,0.2);color:#fbbf24;">⭐ Selectives Only</span>
+        {% endif %}
         <div class="hint" style="margin-top:0.35rem;">Started at {{ active_round.started_at }}</div>
         {% if active_round.auto_end_at %}
           <div style="margin-top:0.25rem;font-weight:600;color:var(--bad);">
@@ -124,6 +162,8 @@
           </button>
         </form>
       </div>
+    {% elif last_round_started %}
+      <div class="alert info">LAST ROUND has ended. No further rounds can start.</div>
     {% elif event_state.started_at %}
       <div class="alert info">No round is currently active. The event is paused between rounds.</div>
       <form method="post" action="/admin/rounds/start">
@@ -131,6 +171,14 @@
         <input type="hidden" name="action" value="start">
         <label for="next_limit">Time Limit (Minutes, optional)</label>
         <input id="next_limit" name="time_limit_minutes" type="number" min="1" placeholder="e.g. 60">
+
+        <label style="display:flex;align-items:flex-start;gap:0.6rem;margin-top:1rem;cursor:pointer;">
+          <input type="checkbox" name="selective_only" value="true" style="margin-top:0.2rem;">
+          <span>
+            <strong>Start as a selectives-only round</strong>
+            <span class="hint" style="display:block;font-size:0.8rem;">Every team sees the same 5 selective challenges and no standard challenges. Select exactly 5 below, or leave all unchecked to choose 5 automatically.</span>
+          </span>
+        </label>
 
         <!-- Selectives Picker for Next Round -->
         <div style="margin-top: 1.25rem; border: 1px solid var(--line); border-radius: 6px; padding: 1rem; background: rgba(255,255,255,0.02);">
@@ -208,7 +256,12 @@
         {% if rounds %}
           {% for r in rounds %}
           <tr>
-            <td><strong>Round {{ r.round_number }}</strong></td>
+            <td>
+              <strong>Round {{ r.round_number }}</strong>
+              {% if r.is_backlog_round %}<span class="badge medium">Backlog Round</span>{% endif %}
+              {% if r.is_last_round %}<span class="badge hard">LAST ROUND</span>{% endif %}
+              {% if r.is_selective_only %}<span class="badge" style="background:rgba(245,158,11,0.2);color:#fbbf24;font-size:0.7rem;">Selectives Only</span>{% endif %}
+            </td>
             <td>{{ r.started_at }}</td>
             <td>{% if r.time_limit_minutes %}{{ r.time_limit_minutes }} min{% else %}—{% endif %}</td>
             <td>

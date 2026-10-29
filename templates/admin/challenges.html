@@ -7,7 +7,7 @@
     <div class="hint">Upload new challenges, toggle visibility, manage hints, and delete challenges.</div>
   </div>
   <div>
-    <a href="/admin/scoring" class="btn secondary">Scoring Controls</a>
+    {% if user.is_ferris %}<a href="/admin/scoring" class="btn secondary">Scoring Controls</a>{% endif %}
     <a href="/admin/dashboard" class="btn secondary">← Back to Dashboard</a>
   </div>
 </div>

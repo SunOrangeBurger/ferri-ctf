@@ -1,0 +1,8 @@
+{
+  "id": 11,
+  "title": "Logjam at 09:17",
+  "category": "Log Analysis",
+  "difficulty": "Medium",
+  "flag": "nexus{sort_then_question}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

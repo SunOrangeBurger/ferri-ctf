@@ -1,0 +1,8 @@
+{
+  "id": 3,
+  "title": "Tile Theft",
+  "category": "Image Decryption",
+  "difficulty": "Hard",
+  "flag": "nexus{tiles_are_out_of_order}",
+  "intended_method": "Image pixel extraction with challenge-specific channel/order transform."
+}

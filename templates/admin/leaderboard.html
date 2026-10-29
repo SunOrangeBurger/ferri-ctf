@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Detailed Leaderboard — Admin{% endblock %}
+{% block content %}
+<div class="flex-between" style="gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
+  <div><h1>Detailed Leaderboard</h1><p class="hint">Admin only · Most points first, then earliest score reached. Exact ties share a rank.</p></div>
+  <div><a href="/admin/dashboard" class="btn secondary">Admin Dashboard</a> <a href="/admin/export/solves" class="btn secondary">Solves CSV</a> <a href="/admin/export/submissions" class="btn secondary">Submissions CSV</a></div>
+</div>
+<div class="flex-between" style="gap:1rem;margin-bottom:1rem;">
+  <input id="team-search" aria-label="Search teams or members" placeholder="Search teams or members…" style="max-width:30rem;" oninput="filterTeams()">
+  <button class="btn secondary" onclick="refreshLeaderboard()">Refresh</button>
+</div>
+<p id="refresh-status" class="hint" aria-live="polite">Refreshes every 30 seconds.</p>
+<div id="admin-leaderboard-data">
+<p class="hint">Updated {{ updated_at | ist_time }} · {% if active_round %}Round {{ active_round.round_number }} active{% else %}Between rounds{% endif %} · {{ reports | length }} ranked teams</p>
+<div class="card table-wrap"><table>
+<thead><tr><th>Rank</th><th>Team / members</th><th>Score</th><th>Solved / available</th><th>Unsolved active</th><th>Score reached (IST)</th><th>Performance</th><th>Hard / Med / Easy</th><th>Attempts</th><th>Hints cost</th><th>Adjustments</th></tr></thead>
+<tbody>{% for r in reports %}{% set e = r.score %}
+<tr data-team-row data-search="{{ e.team_name }} {{ e.members | join(' ') }}">
+<td><strong>#{{ e.rank }}</strong></td><td><a href="#team-{{ e.team_id }}">{{ e.team_name }}</a><div class="hint">{{ e.members | join(', ') }}</div></td>
+<td><strong>{{ e.total_score }}</strong></td><td>{{ e.solved_challenges }} / {{ e.assigned_challenges }}</td><td>{{ r.unsolved_active }}</td><td>{{ e.reached_score_label }}</td><td>{{ e.performance_label }}<div class="hint">{{ e.opportunity_points }} offered pts</div></td><td>{{ e.hard_solved }} / {{ e.medium_solved }} / {{ e.easy_solved }}</td><td>{{ r.attempts }}</td><td>{{ r.hint_cost }}</td><td>{{ r.adjustment_total }}</td>
+</tr>{% else %}<tr><td colspan="11">No ranked teams yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+<p class="hint">Expand a team for its full question history. “Assigned → solved” is wall-clock elapsed time from first assignment, including breaks; it does not measure time actively solving. All clock times are IST. Attempts count submitted flags. Hint costs are already reflected in awarded points.</p>
+{% for r in reports %}{% set e = r.score %}
+<details class="card" id="team-{{ e.team_id }}" data-team-row data-search="{{ e.team_name }} {{ e.members | join(' ') }}" style="margin-bottom:1rem;">
+<summary style="cursor:pointer;"><strong>#{{ e.rank }} {{ e.team_name }}</strong> · {{ e.total_score }} pts · {{ e.solved_challenges }} solved</summary>
+<p class="hint">{{ e.members | join(', ') }} · Team ID: {{ e.team_id }}</p>
+<div class="table-wrap"><table><thead><tr><th>Question</th><th>Category / difficulty</th><th>Status</th><th>Rounds assigned</th><th>First assigned (IST)</th><th>Solved at (IST)</th><th>Assigned → solved</th><th>Solver</th><th>Solve round</th><th>Awarded pts</th><th>Attempts</th><th>Hint cost</th></tr></thead>
+<tbody>{% for q in r.questions %}<tr>
+<td>{{ q.title }}</td><td>{{ q.category }} / {{ q.difficulty }}</td><td>{% if q.solved_at %}<span class="badge solved">Solved</span>{% else %}Unsolved{% endif %}{% if not q.is_active %}<div class="hint">Inactive</div>{% endif %}</td>
+<td>{{ q.assigned_rounds or '—' }}</td><td>{% if q.first_assigned %}{{ q.first_assigned | ist_time }}{% else %}—{% endif %}</td><td>{% if q.solved_at %}{{ q.solved_at | ist_time }}{% else %}—{% endif %}</td><td>{{ q.elapsed or '—' }}</td><td>{{ q.solver or '—' }}</td><td>{{ q.solve_round if q.solve_round else '—' }}</td><td>{{ q.points_awarded if q.points_awarded is not none else '—' }}</td><td>{{ q.attempts }}</td><td>{{ q.hint_cost }}</td>
+</tr>{% else %}<tr><td colspan="12">No question history.</td></tr>{% endfor %}</tbody></table></div>
+{% if r.adjustments %}<h3>Manual score adjustments</h3><div class="table-wrap"><table><thead><tr><th>Time (IST)</th><th>Admin</th><th>Delta</th><th>Reason</th></tr></thead><tbody>{% for a in r.adjustments %}<tr><td>{{ a.created_at | ist_time }}</td><td>{{ a.admin_name }}</td><td>{{ a.delta }}</td><td>{{ a.reason }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+</details>
+{% endfor %}
+</div>
+<script>
+function filterTeams() {
+  const term = document.getElementById('team-search').value.toLowerCase().trim();
+  document.querySelectorAll('[data-team-row]').forEach(row => { row.hidden = !row.dataset.search.toLowerCase().includes(term); });
+}
+let refreshing = false;
+async function refreshLeaderboard() {
+  if (refreshing) return;
+  refreshing = true;
+  const status = document.getElementById('refresh-status');
+  try {
+    const response = await fetch('/admin/leaderboard', {cache:'no-store'});
+    if (!response.ok || response.redirected) throw new Error('Unavailable');
+    const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const next = doc.getElementById('admin-leaderboard-data');
+    if (!next) throw new Error('Unavailable');
+    const open = new Set([...document.querySelectorAll('details[open]')].map(el => el.id));
+    document.getElementById('admin-leaderboard-data').replaceWith(next);
+    next.querySelectorAll('details').forEach(el => { el.open = open.has(el.id); });
+    filterTeams();
+    status.textContent = 'Updated. Refreshes every 30 seconds.';
+  } catch (_) { status.textContent = 'Refresh failed. Showing the previous snapshot; retrying shortly.'; }
+  finally { refreshing = false; }
+}
+setInterval(refreshLeaderboard, 30000);
+</script>
+{% endblock %}

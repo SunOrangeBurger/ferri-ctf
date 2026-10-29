@@ -17,10 +17,15 @@ pub enum Required {
 /// so a new admin route that someone forgets to list fails closed.
 const ADMIN_LEVEL: &[&str] = &[
     "/admin/dashboard",
+    "/admin/leaderboard",
+    "/admin/analytics",
+    "/admin/api/analytics",
     "/admin/teams",
     "/admin/users",
     "/admin/export",
     "/admin/audit",
+    "/admin/challenges",
+    "/admin/hints",
 ];
 
 pub fn required_level(path: &str) -> Required {
@@ -77,14 +82,15 @@ mod tests {
             ("/admin/login", Required::Open),
             ("/admin/dashboard", Required::Admin),
             ("/admin/teams", Required::Admin),
+            ("/admin/leaderboard", Required::Admin),
             ("/admin/teams/x/score", Required::Admin),
             ("/admin/users/x/action", Required::Admin),
             ("/admin/export/solves", Required::Admin),
             ("/admin/audit", Required::Admin),
             ("/admin/rounds", Required::Ferris),
             ("/admin/rounds/start", Required::Ferris),
-            ("/admin/challenges/new", Required::Ferris),
-            ("/admin/hints/x/edit", Required::Ferris),
+            ("/admin/challenges/new", Required::Admin),
+            ("/admin/hints/x/edit", Required::Admin),
             ("/admin/event/start", Required::Ferris),
             ("/admin/admins/add", Required::Ferris),
             ("/admin", Required::Ferris),

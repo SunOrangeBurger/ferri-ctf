@@ -1,0 +1,9 @@
+{
+  "name": "09_The_Archive_With_Two_Keys",
+  "title": "The Archive With Two Keys",
+  "category": "Cryptography",
+  "difficulty": "Medium",
+  "flag": "nexus{two_notes_one_key}",
+  "method": "XOR ciphertext with a repeating key disclosed across two notes",
+  "artifact_file": "cipher.json"
+}

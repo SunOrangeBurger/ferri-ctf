@@ -5,7 +5,7 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::{header, HeaderValue},
     response::{IntoResponse, Redirect, Response},
-    Form,
+    Form, Json,
 };
 use minijinja::context;
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,7 @@ use crate::{
     models::{AuditLog, Challenge, EventState, Round},
     services::{
         files as files_svc,
+        pool as pool_svc,
         rounds as rounds_svc,
         scoring,
         verifier,
@@ -60,13 +61,16 @@ pub struct EventStartForm {
 
 #[derive(Deserialize)]
 pub struct RoundControlForm {
-    pub action: String, // "start" | "end" | "limit"
+    #[serde(default)]
+    pub action: Option<String>, // "start" | "end" | "limit"
     pub round_number: Option<i64>,
     pub time_limit_minutes: Option<i64>,
     /// Comma-separated selective challenge IDs (up to 5)
     pub selective_ids: Option<String>,
     /// Allow reusing selectives that were used in prior rounds
     pub force_reuse: Option<String>,
+    /// Start a special round containing five selectives shared by every team.
+    pub selective_only: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -77,6 +81,9 @@ pub struct RoundAdminView {
     pub auto_end_at: Option<String>,
     pub ended_at: Option<String>,
     pub selectives: Vec<String>,
+    pub is_selective_only: bool,
+    pub is_last_round: bool,
+    pub is_backlog_round: bool,
 }
 
 #[derive(Deserialize)]
@@ -148,6 +155,234 @@ pub async fn dashboard(
         },
     )?;
     Ok(page.into_response())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EndpointMetrics {
+    pub endpoint: String,
+    pub count: usize,
+    pub errors: usize,
+    pub error_rate: f64,
+    pub avg_ms: f64,
+    pub p50_ms: u64,
+    pub p95_ms: u64,
+    pub p99_ms: u64,
+    pub max_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnalyticsSummary {
+    pub total_requests: usize,
+    pub total_errors: usize,
+    pub error_rate: f64,
+    pub avg_ms: f64,
+    pub p50_ms: u64,
+    pub p95_ms: u64,
+    pub p99_ms: u64,
+    pub max_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnalyticsResponse {
+    pub summary: AnalyticsSummary,
+    pub endpoints: Vec<EndpointMetrics>,
+    pub window_size: usize,
+}
+
+pub fn normalize_endpoint(path: &str) -> String {
+    let segments: Vec<&str> = path.trim_matches('/').split('/').collect();
+    if segments.is_empty() || segments == [""] {
+        return "/".to_string();
+    }
+
+    match segments.as_slice() {
+        ["health"] => "/health".into(),
+        ["login"] => "/login".into(),
+        ["register"] => "/register".into(),
+        ["logout"] => "/logout".into(),
+        ["scoreboard"] => "/scoreboard".into(),
+        ["api", "scoreboard"] => "/api/scoreboard".into(),
+        ["api", "challenges", "points"] => "/api/challenges/points".into(),
+        ["admin", "login"] => "/admin/login".into(),
+        ["onboarding"] => "/onboarding".into(),
+        ["team", "create"] => "/team/create".into(),
+        ["team", "join"] => "/team/join".into(),
+        ["team", "preview", _] => "/team/preview/:code".into(),
+        ["team"] => "/team".into(),
+        ["team", "leave"] => "/team/leave".into(),
+        ["team", "kick"] => "/team/kick".into(),
+        ["team", "transfer"] => "/team/transfer".into(),
+        ["team", "rename"] => "/team/rename".into(),
+        ["team", "disband"] => "/team/disband".into(),
+        ["challenges"] => "/challenges".into(),
+        ["challenges", _, "download"] => "/challenges/:id/download".into(),
+        ["challenges", _, "submit"] => "/challenges/:id/submit".into(),
+        ["challenges", _, "hint"] => "/challenges/:id/hint".into(),
+        ["challenges", _] => "/challenges/:id".into(),
+        ["profile"] => "/profile".into(),
+        ["profile", "password"] => "/profile/password".into(),
+        ["admin", "dashboard"] => "/admin/dashboard".into(),
+        ["admin", "analytics"] => "/admin/analytics".into(),
+        ["admin", "api", "analytics"] => "/admin/api/analytics".into(),
+        ["admin", "teams"] => "/admin/teams".into(),
+        ["admin", "teams", _, "action"] => "/admin/teams/:id/action".into(),
+        ["admin", "teams", _, "score"] => "/admin/teams/:id/score".into(),
+        ["admin", "users", _, "action"] => "/admin/users/:id/action".into(),
+        ["admin", "export", _] => "/admin/export/:kind".into(),
+        ["admin", "audit"] => "/admin/audit".into(),
+        ["admin", "scoring"] => "/admin/scoring".into(),
+        ["admin", "scoring", "challenges", _, "points"] => "/admin/scoring/challenges/:id/points".into(),
+        ["admin", "event", "start"] => "/admin/event/start".into(),
+        ["admin", "rounds"] => "/admin/rounds".into(),
+        ["admin", "rounds", "start"] => "/admin/rounds/start".into(),
+        ["admin", "rounds", "end"] => "/admin/rounds/end".into(),
+        ["admin", "rounds", "limit"] => "/admin/rounds/limit".into(),
+        ["admin", "challenges"] => "/admin/challenges".into(),
+        ["admin", "challenges", "new"] => "/admin/challenges/new".into(),
+        ["admin", "challenges", _, "edit"] => "/admin/challenges/:id/edit".into(),
+        ["admin", "challenges", _, "toggle"] => "/admin/challenges/:id/toggle".into(),
+        ["admin", "challenges", "bulk"] => "/admin/challenges/bulk".into(),
+        ["admin", "challenges", _, "delete"] => "/admin/challenges/:id/delete".into(),
+        ["admin", "challenges", _, "hints"] => "/admin/challenges/:id/hints".into(),
+        ["admin", "hints", _, "edit"] => "/admin/hints/:id/edit".into(),
+        ["admin", "hints", _, "delete"] => "/admin/hints/:id/delete".into(),
+        ["admin", "admins"] => "/admin/admins".into(),
+        ["admin", "admins", "add"] => "/admin/admins/add".into(),
+        ["admin", "admins", _, "remove"] => "/admin/admins/:id/remove".into(),
+        _ => {
+            let normalized_segments: Vec<String> = segments
+                .iter()
+                .map(|s| {
+                    if s.len() == 36 && s.contains('-') {
+                        ":id".to_string()
+                    } else if !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()) {
+                        ":id".to_string()
+                    } else {
+                        s.to_string()
+                    }
+                })
+                .collect();
+            format!("/{}", normalized_segments.join("/"))
+        }
+    }
+}
+
+pub fn calculate_stats(durations: &mut [u64], errors: usize, total: usize) -> (f64, u64, u64, u64, u64, f64) {
+    if total == 0 {
+        return (0.0, 0, 0, 0, 0, 0.0);
+    }
+    let error_rate = ((errors as f64 / total as f64) * 1000.0).round() / 10.0;
+    if durations.is_empty() {
+        return (0.0, 0, 0, 0, 0, error_rate);
+    }
+    durations.sort_unstable();
+    let n = durations.len();
+    let sum: u64 = durations.iter().sum();
+    let avg = ((sum as f64 / n as f64) * 100.0).round() / 100.0;
+    let max = durations[n - 1];
+
+    let p50 = percentile(durations, 50.0);
+    let p95 = percentile(durations, 95.0);
+    let p99 = percentile(durations, 99.0);
+
+    (avg, p50, p95, p99, max, error_rate)
+}
+
+fn percentile(sorted: &[u64], p: f64) -> u64 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let n = sorted.len();
+    let rank = (n as f64 * p / 100.0).ceil() as usize;
+    let idx = if rank == 0 { 0 } else { (rank - 1).min(n - 1) };
+    sorted[idx]
+}
+
+/// GET /admin/analytics
+pub async fn analytics_page(
+    State(state): State<Arc<AppState>>,
+    AdminUser(user): AdminUser,
+    ctx: CsrfCtx,
+) -> AppResult<Response> {
+    let page = state.templates.render(
+        "admin/analytics.html",
+        context! {
+            user => UserView::from(&user),
+            csrf_token => ctx.token(&state.keys),
+        },
+    )?;
+    Ok(page.into_response())
+}
+
+/// GET /admin/api/analytics
+pub async fn analytics_json(
+    State(state): State<Arc<AppState>>,
+    AdminUser(_user): AdminUser,
+) -> AppResult<Json<AnalyticsResponse>> {
+    let metrics = {
+        let store = state.metrics.read().unwrap_or_else(|e| e.into_inner());
+        store.iter().cloned().collect::<Vec<_>>()
+    };
+
+    let total_requests = metrics.len();
+    let mut total_errors = 0;
+    let mut all_durations = Vec::with_capacity(total_requests);
+
+    let mut groups: HashMap<String, (Vec<u64>, usize)> = HashMap::new();
+
+    for m in &metrics {
+        if m.status >= 400 {
+            total_errors += 1;
+        }
+        all_durations.push(m.duration_ms);
+
+        let endpoint = normalize_endpoint(&m.path);
+        let entry = groups.entry(endpoint).or_insert_with(|| (Vec::new(), 0));
+        entry.0.push(m.duration_ms);
+        if m.status >= 400 {
+            entry.1 += 1;
+        }
+    }
+
+    let (s_avg, s_p50, s_p95, s_p99, s_max, s_err_rate) =
+        calculate_stats(&mut all_durations, total_errors, total_requests);
+
+    let summary = AnalyticsSummary {
+        total_requests,
+        total_errors,
+        error_rate: s_err_rate,
+        avg_ms: s_avg,
+        p50_ms: s_p50,
+        p95_ms: s_p95,
+        p99_ms: s_p99,
+        max_ms: s_max,
+    };
+
+    let mut endpoints = Vec::new();
+    for (endpoint, (mut durations, errors)) in groups {
+        let count = durations.len();
+        let (avg, p50, p95, p99, max, error_rate) =
+            calculate_stats(&mut durations, errors, count);
+        endpoints.push(EndpointMetrics {
+            endpoint,
+            count,
+            errors,
+            error_rate,
+            avg_ms: avg,
+            p50_ms: p50,
+            p95_ms: p95,
+            p99_ms: p99,
+            max_ms: max,
+        });
+    }
+
+    endpoints.sort_by(|a, b| b.count.cmp(&a.count));
+
+    Ok(Json(AnalyticsResponse {
+        summary,
+        endpoints,
+        window_size: crate::state::MAX_METRICS_REQUESTS,
+    }))
 }
 
 #[derive(Serialize)]
@@ -238,6 +473,24 @@ pub async fn team_action(
                 .bind(&team_id)
                 .execute(&state.db)
                 .await?;
+
+            if let Ok(Some(active_round)) = rounds_svc::get_active_round(&state.db).await {
+                let _ = pool_svc::assign_round_pool(
+                    &state.db,
+                    &team_id,
+                    active_round.round_number,
+                    state.cfg.pool_size_per_team as usize,
+                    state.cfg.repeat_penalty_points,
+                )
+                .await;
+                let _ = pool_svc::assign_selectives_for_team(
+                    &state.db,
+                    &team_id,
+                    active_round.round_number,
+                )
+                .await;
+            }
+
             rounds_svc::record_audit_log(
                 &state.db,
                 &user.user_id,
@@ -568,7 +821,8 @@ pub async fn start_event_submit(
 ) -> AppResult<Response> {
     let selective_ids = parse_selective_ids(&form.selective_ids);
     let force_reuse = form.force_reuse.as_deref().map(|v| v == "true" || v == "on" || v == "1").unwrap_or(false);
-    rounds_svc::start_event(&state, form.time_limit_minutes, &ferris.user_id, &selective_ids, force_reuse).await?;
+    let selective_only = checkbox(&form.selective_only);
+    rounds_svc::start_event(&state, form.time_limit_minutes, &ferris.user_id, &selective_ids, force_reuse, selective_only).await?;
     scoring::invalidate_cache(&state).await;
     Ok(Redirect::to("/admin/rounds").into_response())
 }
@@ -583,6 +837,10 @@ fn parse_selective_ids(raw: &Option<String>) -> Vec<String> {
         .collect()
 }
 
+fn checkbox(value: &Option<String>) -> bool {
+    value.as_deref().is_some_and(|v| matches!(v, "true" | "on" | "1"))
+}
+
 /// GET /admin/rounds
 pub async fn rounds_page(
     State(state): State<Arc<AppState>>,
@@ -590,7 +848,7 @@ pub async fn rounds_page(
     ctx: CsrfCtx,
 ) -> AppResult<Response> {
     let rounds_raw = sqlx::query_as::<_, Round>(
-        "SELECT round_number, started_at, time_limit_minutes, auto_end_at, ended_at
+        "SELECT round_number, started_at, time_limit_minutes, auto_end_at, ended_at, is_selective_only, is_last_round, is_backlog_round
          FROM rounds ORDER BY round_number DESC",
     )
     .fetch_all(&state.db)
@@ -612,6 +870,7 @@ pub async fn rounds_page(
         selectives_by_round.entry(r_num).or_default().push(title);
     }
 
+    let last_round_started = rounds_raw.iter().any(|r| r.is_last_round);
     let rounds: Vec<RoundAdminView> = rounds_raw
         .into_iter()
         .map(|r| {
@@ -623,6 +882,9 @@ pub async fn rounds_page(
                 auto_end_at: r.auto_end_at,
                 ended_at: r.ended_at,
                 selectives,
+                is_selective_only: r.is_selective_only,
+                is_last_round: r.is_last_round,
+                is_backlog_round: r.is_backlog_round,
             }
         })
         .collect();
@@ -665,6 +927,7 @@ pub async fn rounds_page(
             user => UserView::from(&ferris),
             csrf_token => ctx.token(&state.keys),
             rounds => rounds,
+            last_round_started => last_round_started,
             event_state => event_state,
             active_round => active_round,
             available_selectives => available_selectives,
@@ -682,7 +945,30 @@ pub async fn start_next_round_submit(
 ) -> AppResult<Response> {
     let selective_ids = parse_selective_ids(&form.selective_ids);
     let force_reuse = form.force_reuse.as_deref().map(|v| v == "true" || v == "on" || v == "1").unwrap_or(false);
-    rounds_svc::start_round(&state, form.time_limit_minutes, &ferris.user_id, &selective_ids, force_reuse).await?;
+    let selective_only = checkbox(&form.selective_only);
+    rounds_svc::start_round(&state, form.time_limit_minutes, &ferris.user_id, &selective_ids, force_reuse, selective_only).await?;
+    scoring::invalidate_cache(&state).await;
+    Ok(Redirect::to("/admin/rounds").into_response())
+}
+
+/// POST /admin/rounds/last
+pub async fn start_last_round_submit(
+    State(state): State<Arc<AppState>>,
+    FerrisUser(ferris): FerrisUser,
+    Form(form): Form<RoundControlForm>,
+) -> AppResult<Response> {
+    rounds_svc::start_last_round(&state, form.time_limit_minutes, &ferris.user_id).await?;
+    scoring::invalidate_cache(&state).await;
+    Ok(Redirect::to("/admin/rounds").into_response())
+}
+
+/// POST /admin/rounds/backlog
+pub async fn start_backlog_round_submit(
+    State(state): State<Arc<AppState>>,
+    FerrisUser(ferris): FerrisUser,
+    Form(form): Form<RoundControlForm>,
+) -> AppResult<Response> {
+    rounds_svc::start_backlog_round(&state, form.time_limit_minutes, &ferris.user_id).await?;
     scoring::invalidate_cache(&state).await;
     Ok(Redirect::to("/admin/rounds").into_response())
 }
@@ -714,7 +1000,7 @@ pub async fn set_round_limit_submit(
 /// GET /admin/challenges
 pub async fn challenges_admin_page(
     State(state): State<Arc<AppState>>,
-    FerrisUser(ferris): FerrisUser,
+    AdminUser(admin): AdminUser,
     ctx: CsrfCtx,
 ) -> AppResult<Response> {
     let challenges = sqlx::query_as::<_, Challenge>(
@@ -728,7 +1014,7 @@ pub async fn challenges_admin_page(
     let page = state.templates.render(
         "admin/challenges.html",
         context! {
-            user => UserView::from(&ferris),
+            user => UserView::from(&admin),
             csrf_token => ctx.token(&state.keys),
             challenges => challenges,
         },
@@ -739,7 +1025,7 @@ pub async fn challenges_admin_page(
 /// POST /admin/challenges/new (Multipart form)
 pub async fn create_challenge_submit(
     State(state): State<Arc<AppState>>,
-    FerrisUser(ferris): FerrisUser,
+    AdminUser(admin): AdminUser,
     mut multipart: Multipart,
 ) -> AppResult<Response> {
     let mut title = String::new();
@@ -823,9 +1109,31 @@ pub async fn create_challenge_submit(
     .execute(&state.db)
     .await?;
 
+    // If a round is actively running and this is not a selective challenge,
+    // add it to the active round's pool for all locked teams so participants can see and solve it immediately.
+    if let Ok(Some(active_round)) = rounds_svc::get_active_round(&state.db).await {
+        if !is_selective && !active_round.is_selective_only && !active_round.is_last_round && !active_round.is_backlog_round {
+            let _ = sqlx::query(
+                "INSERT OR IGNORE INTO team_challenge_pool
+                 (team_id, round_number, challenge_id, repeat_penalty, opportunity_points)
+                 SELECT t.id, ?, c.id, 0,
+                        CASE WHEN settings.enabled = 1 THEN rules.maximum_points ELSE c.points END
+                 FROM teams t
+                 CROSS JOIN challenges c
+                 CROSS JOIN scoring_settings settings
+                 LEFT JOIN difficulty_scoring_rules rules ON rules.difficulty = c.difficulty
+                 WHERE t.is_locked = 1 AND t.disbanded = 0 AND c.id = ?",
+            )
+            .bind(active_round.round_number)
+            .bind(&challenge_id)
+            .execute(&state.db)
+            .await;
+        }
+    }
+
     rounds_svc::record_audit_log(
         &state.db,
-        &ferris.user_id,
+        &admin.user_id,
         "create_challenge",
         Some("challenge"),
         Some(&challenge_id),
@@ -839,7 +1147,7 @@ pub async fn create_challenge_submit(
 /// POST /admin/challenges/:id/edit
 pub async fn edit_challenge_submit(
     State(state): State<Arc<AppState>>,
-    FerrisUser(ferris): FerrisUser,
+    AdminUser(admin): AdminUser,
     Path(challenge_id): Path<String>,
     Form(form): Form<EditChallengeForm>,
 ) -> AppResult<Response> {
@@ -858,9 +1166,39 @@ pub async fn edit_challenge_submit(
     .execute(&state.db)
     .await?;
 
+    if form.is_active == Some(true) {
+        if let Ok(Some(active_round)) = rounds_svc::get_active_round(&state.db).await {
+            let is_non_sel: Option<bool> = sqlx::query_scalar(
+                "SELECT (is_selective = 0) FROM challenges WHERE id = ?"
+            )
+            .bind(&challenge_id)
+            .fetch_optional(&state.db)
+            .await
+            .unwrap_or(None);
+
+            if is_non_sel == Some(true) && !active_round.is_selective_only && !active_round.is_last_round && !active_round.is_backlog_round {
+                let _ = sqlx::query(
+                    "INSERT OR IGNORE INTO team_challenge_pool
+                     (team_id, round_number, challenge_id, repeat_penalty, opportunity_points)
+                     SELECT t.id, ?, c.id, 0,
+                            CASE WHEN settings.enabled = 1 THEN rules.maximum_points ELSE c.points END
+                     FROM teams t
+                     CROSS JOIN challenges c
+                     CROSS JOIN scoring_settings settings
+                     LEFT JOIN difficulty_scoring_rules rules ON rules.difficulty = c.difficulty
+                     WHERE t.is_locked = 1 AND t.disbanded = 0 AND c.id = ?",
+                )
+                .bind(active_round.round_number)
+                .bind(&challenge_id)
+                .execute(&state.db)
+                .await;
+            }
+        }
+    }
+
     rounds_svc::record_audit_log(
         &state.db,
-        &ferris.user_id,
+        &admin.user_id,
         "edit_challenge",
         Some("challenge"),
         Some(&challenge_id),
@@ -874,7 +1212,7 @@ pub async fn edit_challenge_submit(
 /// POST /admin/challenges/:id/toggle
 pub async fn toggle_challenge_submit(
     State(state): State<Arc<AppState>>,
-    FerrisUser(ferris): FerrisUser,
+    AdminUser(admin): AdminUser,
     Path(challenge_id): Path<String>,
 ) -> AppResult<Response> {
     sqlx::query("UPDATE challenges SET is_active = 1 - is_active WHERE id = ?")
@@ -882,9 +1220,37 @@ pub async fn toggle_challenge_submit(
         .execute(&state.db)
         .await?;
 
+    if let Ok(Some(active_round)) = rounds_svc::get_active_round(&state.db).await {
+        let is_active_and_non_sel: Option<bool> = sqlx::query_scalar(
+            "SELECT (is_active = 1 AND is_selective = 0) FROM challenges WHERE id = ?"
+        )
+        .bind(&challenge_id)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None);
+
+        if is_active_and_non_sel == Some(true) && !active_round.is_selective_only && !active_round.is_last_round && !active_round.is_backlog_round {
+            let _ = sqlx::query(
+                "INSERT OR IGNORE INTO team_challenge_pool
+                 (team_id, round_number, challenge_id, repeat_penalty, opportunity_points)
+                 SELECT t.id, ?, c.id, 0,
+                        CASE WHEN settings.enabled = 1 THEN rules.maximum_points ELSE c.points END
+                 FROM teams t
+                 CROSS JOIN challenges c
+                 CROSS JOIN scoring_settings settings
+                 LEFT JOIN difficulty_scoring_rules rules ON rules.difficulty = c.difficulty
+                 WHERE t.is_locked = 1 AND t.disbanded = 0 AND c.id = ?",
+            )
+            .bind(active_round.round_number)
+            .bind(&challenge_id)
+            .execute(&state.db)
+            .await;
+        }
+    }
+
     rounds_svc::record_audit_log(
         &state.db,
-        &ferris.user_id,
+        &admin.user_id,
         "toggle_challenge",
         Some("challenge"),
         Some(&challenge_id),
@@ -898,7 +1264,7 @@ pub async fn toggle_challenge_submit(
 /// POST /admin/challenges/bulk
 pub async fn bulk_challenge_submit(
     State(state): State<Arc<AppState>>,
-    FerrisUser(ferris): FerrisUser,
+    AdminUser(admin): AdminUser,
     Form(form): Form<BulkChallengeForm>,
 ) -> AppResult<Response> {
     let is_active = form.action == "activate";
@@ -907,9 +1273,30 @@ pub async fn bulk_challenge_submit(
         .execute(&state.db)
         .await?;
 
+    if is_active {
+        if let Ok(Some(active_round)) = rounds_svc::get_active_round(&state.db).await {
+            if !active_round.is_selective_only && !active_round.is_last_round && !active_round.is_backlog_round {
+                let _ = sqlx::query(
+                    "INSERT OR IGNORE INTO team_challenge_pool
+                     (team_id, round_number, challenge_id, repeat_penalty, opportunity_points)
+                     SELECT t.id, ?, c.id, 0,
+                            CASE WHEN settings.enabled = 1 THEN rules.maximum_points ELSE c.points END
+                     FROM teams t
+                     CROSS JOIN challenges c
+                     CROSS JOIN scoring_settings settings
+                     LEFT JOIN difficulty_scoring_rules rules ON rules.difficulty = c.difficulty
+                     WHERE t.is_locked = 1 AND t.disbanded = 0 AND c.is_active = 1 AND c.is_selective = 0",
+                )
+                .bind(active_round.round_number)
+                .execute(&state.db)
+                .await;
+            }
+        }
+    }
+
     rounds_svc::record_audit_log(
         &state.db,
-        &ferris.user_id,
+        &admin.user_id,
         if is_active { "bulk_activate_challenges" } else { "bulk_deactivate_challenges" },
         Some("challenges"),
         None,
@@ -923,7 +1310,7 @@ pub async fn bulk_challenge_submit(
 /// POST /admin/challenges/:id/delete
 pub async fn delete_challenge_submit(
     State(state): State<Arc<AppState>>,
-    FerrisUser(ferris): FerrisUser,
+    AdminUser(admin): AdminUser,
     Path(challenge_id): Path<String>,
 ) -> AppResult<Response> {
     // Delete file if attached
@@ -943,7 +1330,7 @@ pub async fn delete_challenge_submit(
 
     rounds_svc::record_audit_log(
         &state.db,
-        &ferris.user_id,
+        &admin.user_id,
         "delete_challenge",
         Some("challenge"),
         Some(&challenge_id),
@@ -958,7 +1345,7 @@ pub async fn delete_challenge_submit(
 /// POST /admin/challenges/:id/hints
 pub async fn add_hint_submit(
     State(state): State<Arc<AppState>>,
-    FerrisUser(ferris): FerrisUser,
+    AdminUser(admin): AdminUser,
     Path(challenge_id): Path<String>,
     Form(form): Form<HintForm>,
 ) -> AppResult<Response> {
@@ -976,7 +1363,7 @@ pub async fn add_hint_submit(
 
     rounds_svc::record_audit_log(
         &state.db,
-        &ferris.user_id,
+        &admin.user_id,
         "add_hint",
         Some("hint"),
         Some(&hint_id),
@@ -990,7 +1377,7 @@ pub async fn add_hint_submit(
 /// POST /admin/hints/:id/edit
 pub async fn edit_hint_submit(
     State(state): State<Arc<AppState>>,
-    FerrisUser(ferris): FerrisUser,
+    AdminUser(admin): AdminUser,
     Path(hint_id): Path<String>,
     Form(form): Form<HintForm>,
 ) -> AppResult<Response> {
@@ -1003,7 +1390,7 @@ pub async fn edit_hint_submit(
 
     rounds_svc::record_audit_log(
         &state.db,
-        &ferris.user_id,
+        &admin.user_id,
         "edit_hint",
         Some("hint"),
         Some(&hint_id),
@@ -1017,7 +1404,7 @@ pub async fn edit_hint_submit(
 /// POST /admin/hints/:id/delete
 pub async fn delete_hint_submit(
     State(state): State<Arc<AppState>>,
-    FerrisUser(ferris): FerrisUser,
+    AdminUser(admin): AdminUser,
     Path(hint_id): Path<String>,
 ) -> AppResult<Response> {
     sqlx::query("DELETE FROM hints WHERE id = ?")
@@ -1027,7 +1414,7 @@ pub async fn delete_hint_submit(
 
     rounds_svc::record_audit_log(
         &state.db,
-        &ferris.user_id,
+        &admin.user_id,
         "delete_hint",
         Some("hint"),
         Some(&hint_id),
@@ -1133,4 +1520,294 @@ pub async fn remove_admin_submit(
     }
 
     Ok(Redirect::to("/admin/admins").into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_endpoint() {
+        assert_eq!(normalize_endpoint("/"), "/");
+        assert_eq!(normalize_endpoint("/login"), "/login");
+        assert_eq!(normalize_endpoint("/register"), "/register");
+        assert_eq!(normalize_endpoint("/challenges"), "/challenges");
+        assert_eq!(normalize_endpoint("/challenges/5/submit"), "/challenges/:id/submit");
+        assert_eq!(
+            normalize_endpoint("/challenges/a1b2c3d4-e5f6-7890-abcd-ef1234567890/download"),
+            "/challenges/:id/download"
+        );
+        assert_eq!(normalize_endpoint("/team/preview/7X3K9M2P"), "/team/preview/:code");
+        assert_eq!(normalize_endpoint("/admin/teams/123/score"), "/admin/teams/:id/score");
+    }
+
+    #[test]
+    fn test_calculate_stats() {
+        let mut empty = vec![];
+        let (avg, p50, p95, p99, max, err_rate) = calculate_stats(&mut empty, 0, 0);
+        assert_eq!((avg, p50, p95, p99, max, err_rate), (0.0, 0, 0, 0, 0, 0.0));
+
+        let mut durations: Vec<u64> = (1..=100).collect();
+        let (avg, p50, p95, p99, max, err_rate) = calculate_stats(&mut durations, 5, 100);
+        assert_eq!(avg, 50.5);
+        assert_eq!(p50, 50);
+        assert_eq!(p95, 95);
+        assert_eq!(p99, 99);
+        assert_eq!(max, 100);
+        assert_eq!(err_rate, 5.0);
+    }
+
+    #[tokio::test]
+    async fn test_analytics_routes_and_metrics() {
+        use axum::body::Body;
+        use axum::http::{header, Request, StatusCode};
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+        use crate::{app, session, state::test_support};
+
+        let (state, _dir) = test_support::state().await;
+        let app = app::build(state.clone());
+
+        let send_req = |req: Request<Body>| {
+            let app = app.clone();
+            async move {
+                let resp = app.oneshot(req).await.unwrap();
+                let (parts, body) = resp.into_parts();
+                let bytes = body.collect().await.unwrap().to_bytes();
+                (parts.status, String::from_utf8_lossy(&bytes).into_owned())
+            }
+        };
+
+        let (s, _) = send_req(Request::builder().uri("/health").body(Body::empty()).unwrap()).await;
+        assert_eq!(s, StatusCode::OK);
+
+        let (s, _) = send_req(Request::builder().uri("/login").body(Body::empty()).unwrap()).await;
+        assert_eq!(s, StatusCode::OK);
+
+        let (s, _) = send_req(Request::builder().uri("/static/style.css").body(Body::empty()).unwrap()).await;
+        assert_eq!(s, StatusCode::OK);
+
+        // Verify static request was NOT recorded in metrics
+        {
+            let store = state.metrics.read().unwrap();
+            assert!(store.iter().any(|m| m.path == "/health"));
+            assert!(store.iter().any(|m| m.path == "/login"));
+            assert!(!store.iter().any(|m| m.path.starts_with("/static")));
+        }
+
+        // Unauthenticated access to /admin/api/analytics and /admin/analytics returns 404 (Admin gate)
+        let (s, _) = send_req(Request::builder().uri("/admin/api/analytics").body(Body::empty()).unwrap()).await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+
+        let (s, _) = send_req(Request::builder().uri("/admin/analytics").body(Body::empty()).unwrap()).await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+
+        // Create an admin user and session
+        sqlx::query(
+            "INSERT INTO users (id, username, display_name, password_hash, is_admin, is_ferris)
+             VALUES ('adm1', 'admin_tester', 'Admin Tester', 'x', 1, 0)",
+        )
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+        let session_val = session::create(&state.db, &state.keys, 24, "adm1").await.unwrap();
+        let cookie_header = format!("{}={}", session::COOKIE_NAME, session_val);
+
+        // Access /admin/analytics HTML page as admin
+        let (s, body) = send_req(
+            Request::builder()
+                .uri("/admin/analytics")
+                .header(header::COOKIE, &cookie_header)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(body.contains("Live Server Analytics"));
+        assert!(body.contains("setInterval(fetchMetrics, 3000)"));
+
+        // Access /admin/api/analytics JSON as admin
+        let (s, json_body) = send_req(
+            Request::builder()
+                .uri("/admin/api/analytics")
+                .header(header::COOKIE, &cookie_header)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+
+        let resp: AnalyticsResponse = serde_json::from_str(&json_body).unwrap();
+        assert!(resp.summary.total_requests >= 2);
+        assert!(resp.endpoints.iter().any(|e| e.endpoint == "/health"));
+        assert!(resp.endpoints.iter().any(|e| e.endpoint == "/login"));
+    }
+
+    #[tokio::test]
+    async fn test_admin_can_add_challenge() {
+        use axum::body::Body;
+        use axum::http::{header, Request, StatusCode};
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+        use crate::{app, session, state::test_support};
+
+        let (state, _dir) = test_support::state().await;
+        let app = app::build(state.clone());
+
+        // Create an ordinary admin (is_admin = 1, is_ferris = 0)
+        sqlx::query(
+            "INSERT INTO users (id, username, display_name, password_hash, is_admin, is_ferris)
+             VALUES ('admin_user_1', 'regular_admin', 'Regular Admin', 'x', 1, 0)",
+        )
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+        let session_val = session::create(&state.db, &state.keys, 24, "admin_user_1").await.unwrap();
+        let cookie_header = format!("{}={}", session::COOKIE_NAME, session_val);
+
+        // 1. Regular admin can access /admin/challenges
+        let req = Request::builder()
+            .uri("/admin/challenges")
+            .header(header::COOKIE, &cookie_header)
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body_bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let html = String::from_utf8_lossy(&body_bytes);
+        assert!(html.contains("Upload New Challenge"));
+
+        // Extract CSRF token from page
+        let marker = "name=\"csrf_token\" value=\"";
+        let start = html.find(marker).expect("csrf token in page") + marker.len();
+        let csrf_token = html[start..].split('"').next().unwrap();
+
+        // 2. Regular admin can add a new challenge via multipart POST
+        let boundary = "---------------------------boundary123";
+        let body_content = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nAdmin Question 1\r\n\
+             --{boundary}\r\nContent-Disposition: form-data; name=\"category\"\r\n\r\nCrypto\r\n\
+             --{boundary}\r\nContent-Disposition: form-data; name=\"difficulty\"\r\n\r\neasy\r\n\
+             --{boundary}\r\nContent-Disposition: form-data; name=\"points\"\r\n\r\n150\r\n\
+             --{boundary}\r\nContent-Disposition: form-data; name=\"flag\"\r\n\r\nferris{{admin_flag}}\r\n\
+             --{boundary}\r\nContent-Disposition: form-data; name=\"description\"\r\n\r\nTest description\r\n\
+             --{boundary}--\r\n"
+        );
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/admin/challenges/new?csrf_token={csrf_token}"))
+            .header(header::COOKIE, &cookie_header)
+            .header(header::CONTENT_TYPE, format!("multipart/form-data; boundary={boundary}"))
+            .body(Body::from(body_content))
+            .unwrap();
+
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+
+        // Verify challenge was inserted in DB
+        let chal: Option<String> = sqlx::query_scalar("SELECT title FROM challenges WHERE title = 'Admin Question 1'")
+            .fetch_optional(&state.db)
+            .await
+            .unwrap();
+        assert_eq!(chal.as_deref(), Some("Admin Question 1"));
+
+        // Verify audit log recorded admin_user_1 as the creator
+        let audit: Option<String> = sqlx::query_scalar("SELECT admin_id FROM audit_log WHERE action = 'create_challenge'")
+            .fetch_optional(&state.db)
+            .await
+            .unwrap();
+        assert_eq!(audit.as_deref(), Some("admin_user_1"));
+
+        // 3. Test starting the event via POST /admin/event/start with NO action field in the form body
+        // (verifies that missing action field does not fail deserialization)
+        sqlx::query(
+            "INSERT INTO users (id, username, display_name, password_hash, is_admin, is_ferris)
+             VALUES ('ferris_op', 'ferris_operator', 'Ferris', 'x', 1, 1)",
+        )
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+        let ferris_session = session::create(&state.db, &state.keys, 24, "ferris_op").await.unwrap();
+        let ferris_cookie = format!("{}={}", session::COOKIE_NAME, ferris_session);
+
+        // Create a team with a member so event start will lock the team
+        sqlx::query("INSERT INTO teams (id, name, captain_id, join_code, is_locked) VALUES ('team_1', 'Team 1', 'admin_user_1', 'CODE1', 0)")
+            .execute(&state.db)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO team_members (team_id, user_id, role) VALUES ('team_1', 'admin_user_1', 'captain')")
+            .execute(&state.db)
+            .await
+            .unwrap();
+
+        let req = Request::builder()
+            .uri("/admin/rounds")
+            .header(header::COOKIE, &ferris_cookie)
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let html_rounds = String::from_utf8_lossy(&body_bytes);
+        let start_rounds = html_rounds.find(marker).expect("csrf token in rounds page") + marker.len();
+        let ferris_csrf = html_rounds[start_rounds..].split('"').next().unwrap();
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/admin/event/start?csrf_token={ferris_csrf}"))
+            .header(header::COOKIE, &ferris_cookie)
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(format!("csrf_token={ferris_csrf}&time_limit_minutes=60")))
+            .unwrap();
+
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+
+        // Verify round 1 is active
+        let active_round = rounds_svc::get_active_round(&state.db).await.unwrap().expect("active round");
+        assert_eq!(active_round.round_number, 1);
+
+        // 4. Admin adds a challenge WHILE Round 1 is active
+        let body_content2 = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nLive Mid-Round Question\r\n\
+             --{boundary}\r\nContent-Disposition: form-data; name=\"category\"\r\n\r\nWeb\r\n\
+             --{boundary}\r\nContent-Disposition: form-data; name=\"difficulty\"\r\n\r\nmedium\r\n\
+             --{boundary}\r\nContent-Disposition: form-data; name=\"points\"\r\n\r\n250\r\n\
+             --{boundary}\r\nContent-Disposition: form-data; name=\"flag\"\r\n\r\nferris{{live_round_flag}}\r\n\
+             --{boundary}\r\nContent-Disposition: form-data; name=\"description\"\r\n\r\nLive round test\r\n\
+             --{boundary}--\r\n"
+        );
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/admin/challenges/new?csrf_token={csrf_token}"))
+            .header(header::COOKIE, &cookie_header)
+            .header(header::CONTENT_TYPE, format!("multipart/form-data; boundary={boundary}"))
+            .body(Body::from(body_content2))
+            .unwrap();
+
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+
+        // Find the challenge ID
+        let live_chal_id: String = sqlx::query_scalar("SELECT id FROM challenges WHERE title = 'Live Mid-Round Question'")
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+
+        // Verify that the mid-round challenge was immediately inserted into team_challenge_pool for team_1 in round 1!
+        let pool_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM team_challenge_pool WHERE team_id = 'team_1' AND round_number = 1 AND challenge_id = ?",
+        )
+        .bind(&live_chal_id)
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+        assert_eq!(pool_count, 1, "Mid-round challenge must appear in active round's team challenge pool");
+    }
 }

@@ -1,0 +1,9 @@
+{
+  "name": "17_The_Binary_Boardroom",
+  "title": "The Binary Boardroom",
+  "category": "Steganography",
+  "difficulty": "Hard",
+  "flag": "nexus{pixels_have_a_chain_of_custody}",
+  "method": "Extract low bits from generated image pixels and reverse a documented column permutation",
+  "artifact_file": "boardroom.png"
+}

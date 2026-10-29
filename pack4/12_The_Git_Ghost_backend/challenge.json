@@ -1,0 +1,8 @@
+{
+  "id": 12,
+  "title": "The Git Ghost",
+  "category": "Source Code",
+  "difficulty": "Medium",
+  "flag": "nexus{commits_leave_traces}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

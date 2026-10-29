@@ -1,0 +1,9 @@
+{
+  "name": "15_The_Confession_That_Didnt",
+  "title": "The Confession That Didn't",
+  "category": "Document Forensics",
+  "difficulty": "Medium",
+  "flag": "nexus{hashes_beat_hearsay}",
+  "method": "Reject a decoy by validating SHA-256 against manifest",
+  "artifact_file": "evidence_bundle.zip"
+}

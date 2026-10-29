@@ -14,7 +14,7 @@ pub async fn request_hint(pool: &SqlitePool, team_id: &str, hint_id: &str) -> Ap
     let mut tx = super::dynamic_scoring::write_transaction(pool).await?;
     // 1. A round must be active
     let active_round = sqlx::query_as::<_, Round>(
-        "SELECT round_number, started_at, time_limit_minutes, auto_end_at, ended_at
+        "SELECT round_number, started_at, time_limit_minutes, auto_end_at, ended_at, is_selective_only, is_last_round, is_backlog_round
          FROM rounds WHERE ended_at IS NULL
            AND (auto_end_at IS NULL OR auto_end_at > strftime('%Y-%m-%d %H:%M:%f', 'now'))
          ORDER BY round_number DESC LIMIT 1",

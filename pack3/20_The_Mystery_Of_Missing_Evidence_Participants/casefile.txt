@@ -1,0 +1,6 @@
+Statement A: At 09:00, the red folder was in Room 1.
+Statement B: At 09:00, the red folder was in Room 2.
+Camera: records only a blank wall.
+Access log: missing for 08:30-09:30.
+Witness note: 'I was told not to remember.'
+No supplied evidence distinguishes the two rooms.

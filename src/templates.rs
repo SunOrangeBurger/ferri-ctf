@@ -31,7 +31,9 @@ const REQUIRED: &[&str] = &[
     "auth/register.html",
     "admin/login.html",
     "admin/dashboard.html",
+    "admin/analytics.html",
     "admin/teams.html",
+    "admin/leaderboard.html",
     "admin/rounds.html",
     "admin/challenges.html",
     "admin/scoring.html",
@@ -67,6 +69,18 @@ impl From<&SessionUser> for UserView {
     }
 }
 
+/// SQLite timestamps are UTC; display event times in India with an explicit zone.
+pub fn readable_ist_time(raw: &str) -> String {
+    let utc = chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%d %H:%M:%S%.f")
+        .map(|dt| dt.and_utc())
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(raw).map(|dt| dt.to_utc()));
+    match utc {
+        Ok(dt) => dt.with_timezone(&chrono::FixedOffset::east_opt(19_800).unwrap())
+            .format("%d %b, %I:%M:%S %p IST").to_string(),
+        Err(_) => "—".into(),
+    }
+}
+
 pub struct Templates {
     env: Environment<'static>,
 }
@@ -74,6 +88,7 @@ pub struct Templates {
 impl Templates {
     pub fn new() -> Self {
         let mut env = Environment::new();
+        env.add_filter("ist_time", readable_ist_time);
         // Auto-escaping is on for *.html by default.
         env.set_loader(|name| {
             Ok(TemplateFiles::get(name).map(|f| String::from_utf8_lossy(&f.data).into_owned()))
@@ -129,5 +144,18 @@ mod tests {
     #[test]
     fn all_required_templates_compile() {
         super::Templates::new().check().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod time_display_tests {
+    use super::readable_ist_time;
+
+    #[test]
+    fn displays_utc_in_ist_with_day_rollover() {
+        assert_eq!(readable_ist_time("2026-10-17 07:23:34.858"), "17 Oct, 12:53:34 PM IST");
+        assert_eq!(readable_ist_time("2026-10-17 20:00:00"), "18 Oct, 01:30:00 AM IST");
+        assert_eq!(readable_ist_time("2026-10-17T07:23:34Z"), "17 Oct, 12:53:34 PM IST");
+        assert_eq!(readable_ist_time("invalid"), "—");
     }
 }

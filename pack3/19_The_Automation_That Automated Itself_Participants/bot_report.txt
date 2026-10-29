@@ -1,0 +1,6 @@
+Known pair:
+plain: abcdefghijklmnopqrstuvwxyz
+coded: nopqrstuvwxyzabcdefghijklm
+
+Encoded incident note:
+arkhf{nhgbzngvba_arrqf_bofreingvba}

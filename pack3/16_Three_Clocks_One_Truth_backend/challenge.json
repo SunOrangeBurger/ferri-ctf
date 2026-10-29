@@ -1,0 +1,9 @@
+{
+  "name": "16_Three_Clocks_One_Truth",
+  "title": "Three Clocks, One Truth",
+  "category": "Multi-stage Forensics",
+  "difficulty": "Hard",
+  "flag": "nexus{normalize_before_order}",
+  "method": "Normalize timezone offsets, order records, then decode initials",
+  "artifact_file": "clock_records.csv"
+}

@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
 use crate::{
-    errors::AppResult,
+    errors::{AppError, AppResult},
     middleware::{auth::AuthUser, csrf_guard::CsrfCtx},
-    services::{rounds, scoring, team as team_svc},
+    services::{pool as pool_svc, rounds, scoring, team as team_svc},
     state::AppState,
     templates::UserView,
 };
@@ -160,4 +160,41 @@ pub async fn disband_team_submit(
     team_svc::disband_team(&state.db, &user.user_id).await?;
     scoring::invalidate_cache(&state).await;
     Ok(Redirect::to("/onboarding").into_response())
+}
+
+/// POST /team/lock
+pub async fn lock_team_submit(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<Response> {
+    let team_info = team_svc::get_team_for_user(&state.db, &user.user_id).await?
+        .ok_or_else(|| AppError::NotFound("Team not found".into()))?;
+
+    if team_info.team.captain_id != user.user_id {
+        return Err(AppError::Forbidden("Only team captain can lock the team".into()));
+    }
+
+    let team_id = &team_info.team.id;
+    let locked = team_svc::lock_team_if_valid(&state.db, team_id).await?;
+    if !locked {
+        return Err(AppError::BadRequest("Team must have at least 1 member to lock".into()));
+    }
+
+    if let Ok(Some(active_round)) = rounds::get_active_round(&state.db).await {
+        let _ = pool_svc::assign_round_pool(
+            &state.db,
+            team_id,
+            active_round.round_number,
+            state.cfg.pool_size_per_team as usize,
+            state.cfg.repeat_penalty_points,
+        ).await;
+        let _ = pool_svc::assign_selectives_for_team(
+            &state.db,
+            team_id,
+            active_round.round_number,
+        ).await;
+    }
+
+    scoring::invalidate_cache(&state).await;
+    Ok(Redirect::to("/challenges").into_response())
 }

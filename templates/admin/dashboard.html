@@ -14,6 +14,8 @@
     </div>
   </div>
   <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+    <a href="/admin/leaderboard" class="btn" style="font-size:0.85rem;">Detailed Leaderboard</a>
+    <a href="/admin/analytics" class="btn" style="font-size:0.85rem;">Live Analytics</a>
     <a href="/admin/export/solves" class="btn secondary" style="font-size:0.85rem;">Export Solves CSV</a>
     <a href="/admin/export/submissions" class="btn secondary" style="font-size:0.85rem;">Export Submissions CSV</a>
   </div>
@@ -42,9 +44,21 @@
 
 <div class="grid">
   <div class="card interactive">
+    <h3>Live Server Analytics</h3>
+    <p class="hint">Real-time HTTP request metrics, latency percentiles (p50, p95, p99), and error rates.</p>
+    <a href="/admin/analytics" class="btn" style="width:100%;">View Analytics →</a>
+  </div>
+
+  <div class="card interactive">
     <h3>Team Management</h3>
     <p class="hint">Search teams, force-join/kick members, change captains, manual score adjustments, and locking.</p>
-    <a href="/admin/teams" class="btn" style="width:100%;">Manage Teams →</a>
+    <a href="/admin/teams" class="btn secondary" style="width:100%;">Manage Teams →</a>
+  </div>
+
+  <div class="card interactive">
+    <h3>Challenges &amp; Hints</h3>
+    <p class="hint">Upload challenges (ZIP streaming), configure categories, points, flags, hints, and toggles.</p>
+    <a href="/admin/challenges" class="btn secondary" style="width:100%;">Manage Challenges →</a>
   </div>
 
   {% if user.is_ferris %}
@@ -57,12 +71,6 @@
     <h3>Round &amp; Event Controls</h3>
     <p class="hint">Start event (Round 1), trigger next round, set time limits, or end current active round.</p>
     <a href="/admin/rounds" class="btn" style="width:100%;">Round Controls →</a>
-  </div>
-
-  <div class="card interactive">
-    <h3>Challenges &amp; Hints</h3>
-    <p class="hint">Upload challenges (ZIP streaming), configure categories, points, flags, hints, and toggles.</p>
-    <a href="/admin/challenges" class="btn" style="width:100%;">Manage Challenges →</a>
   </div>
 
   <div class="card interactive">

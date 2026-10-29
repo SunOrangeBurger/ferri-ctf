@@ -1,0 +1,1 @@
+The scan was exported as a horizontal mirror. Reverse each row, then extract green LSBs.

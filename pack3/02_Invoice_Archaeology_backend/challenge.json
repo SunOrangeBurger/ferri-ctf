@@ -1,0 +1,9 @@
+{
+  "name": "02_Invoice_Archaeology",
+  "title": "Invoice Archaeology",
+  "category": "File Forensics",
+  "difficulty": "Easy",
+  "flag": "nexus{receipts_tell_the_truth}",
+  "method": "Read a deliberately odd sequence of invoice line-item quantities",
+  "artifact_file": "invoice.csv"
+}

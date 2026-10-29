@@ -1,0 +1,2 @@
+10:12:00Z host=api-3 event=reboot
+10:02:00Z host=api-3 event=healthcheck

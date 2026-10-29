@@ -1,0 +1,9 @@
+{
+  "name": "03_The_Metadata_Intern",
+  "title": "The Metadata Intern",
+  "category": "Metadata",
+  "difficulty": "Easy",
+  "flag": "nexus{comments_are_not_confidential}",
+  "method": "Inspect a local HTML file's metadata comment",
+  "artifact_file": "press_release.html"
+}

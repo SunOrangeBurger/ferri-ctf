@@ -1,0 +1,9 @@
+{
+  "name": "18_The_Quiet_Packet",
+  "title": "The Quiet Packet",
+  "category": "Network / Log Analysis",
+  "difficulty": "Hard",
+  "flag": "nexus{reassemble_then_verify}",
+  "method": "Reassemble out-of-order packet fragments and verify checksums",
+  "artifact_file": "packets.json"
+}

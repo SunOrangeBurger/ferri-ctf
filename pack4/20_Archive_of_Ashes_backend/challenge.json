@@ -1,0 +1,8 @@
+{
+  "id": 20,
+  "title": "Archive of Ashes",
+  "category": "File Forensics",
+  "difficulty": "Hard",
+  "flag": "nexus{hashes_over_headlines}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

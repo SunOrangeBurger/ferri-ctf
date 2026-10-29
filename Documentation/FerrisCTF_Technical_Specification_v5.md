@@ -321,7 +321,7 @@ CREATE INDEX IF NOT EXISTS idx_challenges_difficulty ON challenges(difficulty, i
 CREATE INDEX IF NOT EXISTS idx_score_adj_team ON score_adjustments(team_id);
 ```
 
-Notes: `team_members.role` and `teams.captain_id` must be updated together in one transaction. Prefer deactivating a challenge over deleting it, because deletion cascades to solves and changes scores. A challenge's `difficulty` is assigned at creation and is not editable, because it drives pool composition and tie-breaking.
+Notes: `team_members.role` and `teams.captain_id` must be updated together in one transaction. Prefer deactivating a challenge over deleting it, because deletion cascades to solves and changes scores. A challenge's `difficulty` is assigned at creation and is not editable because it drives pool composition and dynamic opportunity values.
 
 ## 5. Team Lifecycle
 
@@ -422,75 +422,26 @@ Submission preconditions (checked before verification): a round is active and ha
 
 ### 7.1 Ranking Order
 
-Teams are ranked by the following, in order. Steps 2 to 5 are applied only between teams whose total scores are identical:
+Teams are ranked by:
 
-1. **Total score**, higher first. Total score is the sum of `solves.points_awarded` plus the sum of `score_adjustments.delta`.
-2. **Countback by difficulty.** Compare the number of challenges solved in each tier, hardest first: hard, then medium, then easy. The first tier where counts differ decides, and more solves wins. Difficulty is the value assigned at challenge creation. Example: if two teams are tied on score and Team A solved 4 easy while Team B solved 1 hard, Team B ranks higher.
-3. **Countback by solve counts.** If all three tier counts are equal, compare the cumulative solve counts of the challenges each team solved. A challenge's solve count is the number of teams that solved it across all rounds. For each tier in turn (hard, then medium, then easy), sum the solve counts of the team's solved challenges in that tier. The lower sum wins, because the team solved the harder-in-practice challenges. Example: both teams solved 3 hard, 10 medium and 20 easy. Team A's hard challenges have 5, 10 and 15 solves in total (sum 30). Team B's have 6, 10 and 12 (sum 28). Team B wins this countback.
-4. **Time to score.** If countback is also tied, the team that first reached its final tied score earlier ranks higher (see 7.3).
-5. **Team creation time**, earlier first (final fallback).
+1. **Total awarded score**, higher first, including manual score adjustments.
+2. **Time to score**, earlier first: the timestamp at which the team reached its final current score.
+
+Pool-adjusted performance and completion rate are informational only. They never override equal-score time ordering. Team name and ID provide stable display ordering only; teams equal in points and time share a rank. Difficulty counts and challenge rarity do not break ties.
 
 ### 7.2 Query
 
-Steps 1 to 3 are computed in SQL. Steps 4 and 5 are resolved in the scoring service (`services/scoring.rs`) for teams still tied.
+The query aggregates raw awards, adjustments, solve counts, frozen opportunity values, and score-event timestamps. `services/scoring.rs` compares awarded score and score-reached time and assigns competition ranks (`1, 1, 3`).
 
-```sql
-WITH solve_counts AS (
-    SELECT challenge_id, COUNT(*) AS n_solves
-    FROM solves
-    GROUP BY challenge_id
-),
-adj AS (
-    SELECT team_id, SUM(delta) AS adj_total
-    FROM score_adjustments
-    GROUP BY team_id
-),
-agg AS (
-    SELECT
-        s.team_id,
-        SUM(s.points_awarded) AS solve_points,
-        SUM(CASE WHEN c.difficulty = 'hard'   THEN 1 ELSE 0 END) AS hard_solved,
-        SUM(CASE WHEN c.difficulty = 'medium' THEN 1 ELSE 0 END) AS medium_solved,
-        SUM(CASE WHEN c.difficulty = 'easy'   THEN 1 ELSE 0 END) AS easy_solved,
-        SUM(CASE WHEN c.difficulty = 'hard'   THEN sc.n_solves ELSE 0 END) AS hard_solve_sum,
-        SUM(CASE WHEN c.difficulty = 'medium' THEN sc.n_solves ELSE 0 END) AS medium_solve_sum,
-        SUM(CASE WHEN c.difficulty = 'easy'   THEN sc.n_solves ELSE 0 END) AS easy_solve_sum
-    FROM solves s
-    JOIN challenges c    ON c.id = s.challenge_id
-    JOIN solve_counts sc ON sc.challenge_id = s.challenge_id
-    GROUP BY s.team_id
-)
-SELECT
-    t.id AS team_id,
-    t.name AS team_name,
-    t.created_at AS team_created_at,
-    COALESCE(a.solve_points, 0) + COALESCE(adj.adj_total, 0) AS total_score,
-    COALESCE(a.hard_solved, 0)       AS hard_solved,
-    COALESCE(a.medium_solved, 0)     AS medium_solved,
-    COALESCE(a.easy_solved, 0)       AS easy_solved,
-    COALESCE(a.hard_solve_sum, 0)    AS hard_solve_sum,
-    COALESCE(a.medium_solve_sum, 0)  AS medium_solve_sum,
-    COALESCE(a.easy_solve_sum, 0)    AS easy_solve_sum
-FROM teams t
-LEFT JOIN agg a   ON a.team_id = t.id
-LEFT JOIN adj     ON adj.team_id = t.id
-WHERE t.disbanded = 0 AND t.is_locked = 1
-ORDER BY
-    total_score DESC,
-    hard_solved DESC, medium_solved DESC, easy_solved DESC,
-    hard_solve_sum ASC, medium_solve_sum ASC, easy_solve_sum ASC,
-    t.created_at ASC;
-```
-
-The scoring service reorders rows that tie through all SQL keys using `reached_score_at` (7.3) before `team_created_at`. The leaderboard shows each team's name and its members' display names.
+`team_challenge_pool.opportunity_points` is frozen on insert. Existing rows are backfilled by migration. The opportunity aggregation first collapses repeated `(team_id, challenge_id)` rows, using the highest frozen value if configuration changed between appearances. Inactive unsolved challenges are excluded until reactivated; solved challenges remain in both numerator and denominator.
 
 ### 7.3 Time Tie-Break
 
-`reached_score_at` is the timestamp at which the team first reached its final (current) total score and stayed there. The service replays the team's score events (solves by `solved_at`, adjustments by `created_at`) in order, keeping a running total, and takes the time of the earliest event after which the running total equals the final total and never changes again. A solve that awards zero points, or any event that leaves the total unchanged, does not move this timestamp. The earlier timestamp wins. All teams share the same round reveal times, so comparing timestamps is the same as comparing time elapsed since reveal.
+`reached_score_at` is the earliest timestamp after which the team's running score equals its final current score and never changes again. Solves use `solved_at`, adjustments use `created_at`, and zero-point events do not move the timestamp. When awarded scores are equal, a later score-reached time cannot rank above an earlier one.
 
 ### 7.4 Manual Score Adjustments
 
-Admins (and Ferris) may adjust any team's score by a positive or negative `delta` with a required reason, via `POST /admin/teams/:id/score`. Each adjustment inserts a `score_adjustments` row and an `audit_log` entry (`action = 'score_adjust'`, with delta and reason in `details`). Adjustments count toward total score and the time tie-break (7.3), and invalidate the scoreboard cache.
+Admins (and Ferris) may adjust any team's score by a positive or negative `delta` with a required reason, via `POST /admin/teams/:id/score`. Each adjustment inserts a `score_adjustments` row and an `audit_log` entry (`action = 'score_adjust'`, with delta and reason in `details`). Adjustments count toward total score and pool-adjusted performance, and invalidate the scoreboard cache.
 
 ### 7.5 Caching
 
@@ -790,7 +741,7 @@ FerrisCTF/
 11. **Routes.** Implement all routes in Section 8. Wire middleware: auth (including ban check), admin\_guard (returns 404, with a stricter Ferris guard for Ferris routes), rate\_limit, CSRF.
 12. **Templates.** MiniJinja environment in `templates.rs`, all templates inheriting from `base.html`, embedded in the binary for release builds.
 13. **Main.** Initialize tracing, config, DB, and router. Bootstrap the admin and Ferris account if none exists. Spawn the round auto-end task. Bind to `0.0.0.0:8080` (configurable). Graceful shutdown on SIGINT/SIGTERM.
-14. **Tests.** Unit tests for verifier, pool (quotas, exclusion of solved, repeat penalty floor), scoring (countback and time tie-breaks), rounds, and team services. Integration test: register, create team, join, start event, solve, scoreboard, end round, start next round.
+14. **Tests.** Unit tests for verifier, pool quotas and solved-question exclusions, pool-adjusted scoring and earlier-final-score tie-breaks, rounds, and team services. Integration test: register, create team, join, start event, solve, scoreboard, end round, start next round.
 
 ## 14. Operational Notes
 
@@ -837,7 +788,7 @@ Changes made in v3 (relative to v2):
 - **Pools:** replaced the fixed 5-unsolved pool with a per-round pool (default 15 from 60 planned questions over 4 rounds), split 60/30/10 easy/medium/hard by largest remainder. Pools are redistributed from the question bank each round, independently per team, excluding solved challenges. Mid-round replenishment on solve was removed, and `team_challenge_pool` now carries `round_number`.
 - **Repeat penalty:** unsolved challenges that reappear lose 10 points per re-appearance, never below zero (frozen at assignment, combined with hint costs under the same floor).
 - **Difficulty:** added `challenges.difficulty` (easy, medium, hard), assigned at creation and not editable.
-- **Tie-breaking:** replaced the score, last-solve-time, creation-time order with score, then countback (hard, medium, easy counts), then countback by cumulative solve counts (lower wins), then time first reaching the final score, then team creation time. Added `solves.round_number`.
+- **Fair random-pool ranking:** ranking uses pool-adjusted performance, completion rate, raw score, and the time the final score was reached. Exact ties share a rank. Added frozen `team_challenge_pool.opportunity_points` values.
 - **Roles:** Ferris now has a web identity (`is_ferris`, set on the bootstrap account), adds and removes admins, controls rounds, and manages challenges and hints. Admins are limited to participants and scores.
 - **Score adjustments:** admins and Ferris may adjust scores manually through the new `score_adjustments` table, with a required reason and an `audit_log` entry.
 - **Routes:** added round, admin-management, and score-adjustment routes, and moved event start and challenge and hint management to Ferris.
@@ -845,4 +796,4 @@ Changes made in v3 (relative to v2):
 Changes made in v5 (relative to v3):
 
 - **Upload limit:** MAX\_UPLOAD\_BYTES raised from 10 MB to 30 MB (31457280). Applies to the constants table, the upload rules in 9.6, and the file service in Section 13.
-- **Clearer instructions:** hint definitions are now consistently attributed to Ferris (6.3 previously said Admin); the 404 principle in Section 1 now covers Ferris-only routes; the ranking order in 7.1 states that tie-break steps apply only between teams with equal total score; 6.4 states that ROUND\_COUNT sizes pools but does not cap rounds; "out of scope for v2" now reads "for this version"; title and revision pointers updated.
+- **Clearer instructions:** hint definitions are consistently attributed to Ferris; the 404 principle in Section 1 covers Ferris-only routes; Section 7.1 documents exact pool-adjusted comparisons; 6.4 states that ROUND\_COUNT sizes pools but does not cap rounds; title and revision pointers are updated.

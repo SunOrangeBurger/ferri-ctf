@@ -1,0 +1,8 @@
+{
+  "id": 22,
+  "title": "Clock Skew Cabinet",
+  "category": "Timeline Analysis",
+  "difficulty": "Hard",
+  "flag": "nexus{correct_clocks_first}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

@@ -77,7 +77,7 @@ impl Config {
             planned_questions,
             round_count,
             pool_size_per_team,
-            repeat_penalty_points: env_parse("REPEAT_PENALTY_POINTS", 10)?,
+            repeat_penalty_points: env_parse("REPEAT_PENALTY_POINTS", 0)?,
             grace_period_minutes: env_parse("GRACE_PERIOD_MINUTES", 30)?,
             max_upload_bytes: env_parse("MAX_UPLOAD_BYTES", 31_457_280)?,
             session_ttl_hours: env_parse("SESSION_TTL_HOURS", 24)?,

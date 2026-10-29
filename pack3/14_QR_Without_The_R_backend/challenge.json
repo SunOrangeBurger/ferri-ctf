@@ -1,0 +1,9 @@
+{
+  "name": "14_QR_Without_The_R",
+  "title": "QR Without the R",
+  "category": "Image / Encoding",
+  "difficulty": "Medium",
+  "flag": "nexus{rows_are_read_left_to_right}",
+  "method": "Reconstruct text from row-wise QR-like binary grid",
+  "artifact_file": "grid.txt"
+}

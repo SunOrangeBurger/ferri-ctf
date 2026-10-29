@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Live Analytics — Nimbus 2000{% endblock %}
+{% block content %}
+<div class="flex-between" style="margin-bottom: 1.5rem; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1 style="margin:0;">Live Server Analytics</h1>
+    <div class="hint" style="margin-top:0.35rem;">
+      Real-time HTTP metrics, latency percentiles, and error rate across endpoints.
+      <span id="poll-badge" class="badge easy" style="margin-left:0.5rem; display:inline-flex; align-items:center; gap:0.35rem;">
+        <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:currentColor; animation: pulse 1.8s infinite;"></span>
+        Live Polling (3s)
+      </span>
+    </div>
+  </div>
+  <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+    <span id="last-updated" class="hint" style="font-size:0.85rem;">Connecting...</span>
+    <button id="btn-refresh" class="btn secondary" onclick="fetchMetrics()" style="font-size:0.85rem;padding:0.4rem 0.85rem;margin:0;">
+      Refresh Now
+    </button>
+    <a href="/admin/dashboard" class="btn secondary" style="font-size:0.85rem;padding:0.4rem 0.85rem;">
+      &larr; Admin Dashboard
+    </a>
+  </div>
+</div>
+
+<div class="stat-box" style="margin-bottom: 2rem;">
+  <div class="stat">
+    <div class="stat-val" id="summary-total">—</div>
+    <div class="stat-lbl">Requests (Window)</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val" id="summary-errors" style="color:var(--green);">—</div>
+    <div class="stat-lbl">Error Rate (4xx/5xx)</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val" id="summary-avg">—</div>
+    <div class="stat-lbl">Average Latency</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val" id="summary-p50">—</div>
+    <div class="stat-lbl">p50 Latency</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val" id="summary-p95">—</div>
+    <div class="stat-lbl">p95 Latency</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val" id="summary-p99">—</div>
+    <div class="stat-lbl">p99 Latency</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val" id="summary-max">—</div>
+    <div class="stat-lbl">Max Latency</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="flex-between" style="margin-bottom: 1rem; flex-wrap:wrap;">
+    <div>
+      <h2 style="margin:0;">Endpoint Performance Breakdown</h2>
+      <p class="hint" style="margin:0.25rem 0 0 0;">Aggregated over the rolling window (max 10,000 requests), sorted by request volume.</p>
+    </div>
+    <div class="hint" id="table-count" style="font-size:0.9rem;">
+      0 endpoints tracked
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Endpoint</th>
+          <th style="text-align:right;">Requests</th>
+          <th style="text-align:right;">Errors</th>
+          <th style="text-align:right;">Error Rate</th>
+          <th style="text-align:right;">Avg</th>
+          <th style="text-align:right;">p50</th>
+          <th style="text-align:right;">p95</th>
+          <th style="text-align:right;">p99</th>
+          <th style="text-align:right;">Max</th>
+        </tr>
+      </thead>
+      <tbody id="analytics-tbody">
+        <tr>
+          <td colspan="9" style="text-align:center; padding: 2rem;" class="hint">
+            Loading metrics...
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+@keyframes pulse {
+  0% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 0.35; transform: scale(0.9); }
+}
+.mono-path {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--fg-bright);
+}
+.metric-num {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+</style>
+
+<script>
+async function fetchMetrics() {
+  const badge = document.getElementById('poll-badge');
+  const lastUpdated = document.getElementById('last-updated');
+
+  try {
+    const res = await fetch('/admin/api/analytics', {
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (!res.ok) {
+      throw new Error('HTTP ' + res.status);
+    }
+
+    const data = await res.json();
+    renderSummary(data.summary);
+    renderEndpoints(data.endpoints);
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString();
+    lastUpdated.textContent = 'Updated ' + timeStr;
+    badge.className = 'badge easy';
+  } catch (err) {
+    console.error('Analytics fetch error:', err);
+    lastUpdated.textContent = 'Connection error';
+    badge.className = 'badge bad';
+  }
+}
+
+function renderSummary(s) {
+  if (!s) return;
+  document.getElementById('summary-total').textContent = s.total_requests.toLocaleString();
+
+  const errEl = document.getElementById('summary-errors');
+  errEl.textContent = s.error_rate.toFixed(1) + '%';
+  if (s.error_rate > 5) {
+    errEl.style.color = 'var(--bad)';
+  } else if (s.error_rate > 1) {
+    errEl.style.color = 'var(--yellow)';
+  } else {
+    errEl.style.color = 'var(--green)';
+  }
+
+  document.getElementById('summary-avg').textContent = s.avg_ms.toFixed(1) + ' ms';
+  document.getElementById('summary-p50').textContent = s.p50_ms + ' ms';
+  document.getElementById('summary-p95').textContent = s.p95_ms + ' ms';
+  document.getElementById('summary-p99').textContent = s.p99_ms + ' ms';
+  document.getElementById('summary-max').textContent = s.max_ms + ' ms';
+}
+
+function renderEndpoints(endpoints) {
+  const tbody = document.getElementById('analytics-tbody');
+  const countEl = document.getElementById('table-count');
+
+  if (!endpoints || endpoints.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding: 2rem;" class="hint">No requests recorded yet in the rolling window.</td></tr>';
+    countEl.textContent = '0 endpoints tracked';
+    return;
+  }
+
+  countEl.textContent = endpoints.length + (endpoints.length === 1 ? ' endpoint tracked' : ' endpoints tracked');
+
+  let html = '';
+  for (const ep of endpoints) {
+    let errBadgeClass = 'easy';
+    if (ep.error_rate > 5) {
+      errBadgeClass = 'hard';
+    } else if (ep.error_rate > 0) {
+      errBadgeClass = 'medium';
+    }
+
+    html += `
+      <tr>
+        <td>
+          <span class="mono-path">${escapeHtml(ep.endpoint)}</span>
+        </td>
+        <td class="metric-num"><strong>${ep.count.toLocaleString()}</strong></td>
+        <td class="metric-num">${ep.errors.toLocaleString()}</td>
+        <td class="metric-num">
+          <span class="badge ${errBadgeClass}">${ep.error_rate.toFixed(1)}%</span>
+        </td>
+        <td class="metric-num">${ep.avg_ms.toFixed(1)} ms</td>
+        <td class="metric-num">${ep.p50_ms} ms</td>
+        <td class="metric-num">${ep.p95_ms} ms</td>
+        <td class="metric-num">${ep.p99_ms} ms</td>
+        <td class="metric-num" style="color:${ep.max_ms > 1000 ? 'var(--yellow)' : 'inherit'};">${ep.max_ms} ms</td>
+      </tr>
+    `;
+  }
+  tbody.innerHTML = html;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Initial fetch and 3-second live polling loop
+fetchMetrics();
+setInterval(fetchMetrics, 3000);
+</script>
+{% endblock %}

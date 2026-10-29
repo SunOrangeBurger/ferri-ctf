@@ -1,0 +1,3 @@
+10:01 receipt=R-31 user=svc_deploy action=export
+10:04 receipt=R-17 user=guest action=view
+10:09 receipt=R-22 user=svc_deploy action=rollback

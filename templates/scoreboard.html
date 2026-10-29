@@ -6,9 +6,9 @@
     <h1 style="margin:0;">Leaderboard</h1>
     <div style="margin-top:0.35rem;">
       {% if active_round %}
-        <span class="badge medium">Round {{ active_round.round_number }} in progress</span>
+        <span class="badge medium" data-round-badge>Round {{ active_round.round_number }} in progress</span>
       {% else %}
-        <span class="badge secondary">Between Rounds</span>
+        <span class="badge secondary" data-round-badge>Between Rounds</span>
       {% endif %}
     </div>
   </div>
@@ -25,11 +25,6 @@
           <th style="width:4rem;">Rank</th>
           <th>Team</th>
           <th>Members</th>
-          <th style="text-align:right;">Score</th>
-          <th style="text-align:center;">Hard</th>
-          <th style="text-align:center;">Med</th>
-          <th style="text-align:center;">Easy</th>
-          <th>Last Solve</th>
         </tr>
       </thead>
       <tbody>
@@ -51,27 +46,12 @@
                 {% endfor %}
               </span>
             </td>
-            <td style="text-align:right;">
-              <strong style="color:var(--cyan);font-size:1.1rem;">{{ e.total_score }}</strong>
-            </td>
-            <td style="text-align:center;">
-              <span class="badge hard">{{ e.hard_solved }}</span>
-            </td>
-            <td style="text-align:center;">
-              <span class="badge medium">{{ e.medium_solved }}</span>
-            </td>
-            <td style="text-align:center;">
-              <span class="badge easy">{{ e.easy_solved }}</span>
-            </td>
-            <td class="hint">
-              {{ e.reached_score_at | default("—", true) }}
-            </td>
           </tr>
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="8" class="center hint" style="padding: 2.5rem;">
-              No teams on the leaderboard yet. Solves will appear here.
+            <td colspan="3" class="center hint" style="padding: 2.5rem;">
+              No teams on the leaderboard yet.
             </td>
           </tr>
         {% endif %}
@@ -82,13 +62,58 @@
 
 <script>
 // Auto-refresh leaderboard via /api/scoreboard
+const RANK_COLORS = { 1: 'var(--c-mauve)', 2: 'var(--c-sky)', 3: 'var(--c-pearl)' };
+const RANK_CLASSES = { 1: 'rank-1', 2: 'rank-2', 3: 'rank-3' };
+
+function buildRow(e) {
+  const rankColor = RANK_COLORS[e.rank] || '';
+  const rankClass = RANK_CLASSES[e.rank] || '';
+  const colorStyle = rankColor ? ` style="color:${rankColor};"` : '';
+  return `<tr${rankClass ? ` class="${rankClass}"` : ''}>
+    <td><strong style="font-size:1.1rem;${rankColor ? `color:${rankColor};` : ''}">#${e.rank}</strong></td>
+    <td><strong>${escHtml(e.team_name)}</strong></td>
+    <td><span class="hint">${e.members.map(escHtml).join(', ')}</span></td>
+  </tr>`;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 setInterval(async () => {
   try {
     const res = await fetch('/api/scoreboard');
     if (!res.ok) return;
     const data = await res.json();
+
+    // Re-render table body
+    const tbody = document.querySelector('#scoreboard-table tbody');
+    if (tbody && Array.isArray(data.scoreboard)) {
+      if (data.scoreboard.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="center hint" style="padding:2.5rem;">No teams on the leaderboard yet.</td></tr>';
+      } else {
+        tbody.innerHTML = data.scoreboard.map(buildRow).join('');
+      }
+    }
+
+    // Update round badge
+    const badge = document.querySelector('[data-round-badge]');
+    if (badge) {
+      if (data.active_round != null) {
+        badge.className = 'badge medium';
+        badge.textContent = `Round ${data.active_round} in progress`;
+      } else {
+        badge.className = 'badge secondary';
+        badge.textContent = 'Between Rounds';
+      }
+    }
+
     const ind = document.getElementById('poll-indicator');
-    if (ind) ind.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    if (ind) ind.textContent = 'Updated just now';
   } catch(e) {}
 }, 15000);
 </script>

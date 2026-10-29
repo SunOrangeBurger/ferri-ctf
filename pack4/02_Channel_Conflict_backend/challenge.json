@@ -1,0 +1,8 @@
+{
+  "id": 2,
+  "title": "Channel Conflict",
+  "category": "Image Decryption",
+  "difficulty": "Hard",
+  "flag": "nexus{red_channel_remembers}",
+  "intended_method": "Image pixel extraction with challenge-specific channel/order transform."
+}

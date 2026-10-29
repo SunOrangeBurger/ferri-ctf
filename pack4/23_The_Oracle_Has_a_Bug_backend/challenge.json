@@ -1,0 +1,8 @@
+{
+  "id": 23,
+  "title": "The Oracle Has a Bug",
+  "category": "Logic",
+  "difficulty": "Medium",
+  "flag": "nexus{test_every_case}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

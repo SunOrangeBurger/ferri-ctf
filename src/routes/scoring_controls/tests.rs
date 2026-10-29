@@ -212,6 +212,11 @@ async fn quotes_are_authenticated_scoped_and_show_zero_earned_points() {
         .execute(&state.db)
         .await
         .unwrap();
+    // Hint deductions, rather than legacy repeat penalties, produce a zero award.
+    sqlx::query("INSERT INTO hints(id, challenge_id, content, point_cost) VALUES ('zero-hint', 'easy', 'help', 1000)")
+        .execute(&state.db).await.unwrap();
+    sqlx::query("INSERT INTO hint_usage(team_id, hint_id) VALUES ('t0', 'zero-hint')")
+        .execute(&state.db).await.unwrap();
     let saved = send(
         &app,
         "POST",

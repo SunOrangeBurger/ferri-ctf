@@ -9,9 +9,10 @@ use crate::{
 };
 
 /// The complete application. Layer order, outermost first:
-///   security_headers -> error_pages -> load_session -> csrf_guard -> admin_gate -> routes
+///   analytics -> security_headers -> error_pages -> load_session -> csrf_guard -> admin_gate -> routes
 pub fn build(state: Arc<AppState>) -> Router {
     middleware::secure(routes::router(), state.clone())
         .layer(from_fn_with_state(state.clone(), response::error_pages))
-        .layer(from_fn_with_state(state, response::security_headers))
+        .layer(from_fn_with_state(state.clone(), response::security_headers))
+        .layer(from_fn_with_state(state, middleware::analytics::track_analytics))
 }

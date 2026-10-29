@@ -1,0 +1,1 @@
+Extract blue LSBs row-major; validate decoded payload using manifest.json.

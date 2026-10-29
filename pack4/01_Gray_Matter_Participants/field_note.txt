@@ -1,0 +1,1 @@
+Blue-channel LSBs, row-major, MSB-first. Stop at NUL.

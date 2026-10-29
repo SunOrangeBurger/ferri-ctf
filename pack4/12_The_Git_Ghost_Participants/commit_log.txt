@@ -1,0 +1,1 @@
+Cleanup deleted a label, not a credential. Compare snapshots.

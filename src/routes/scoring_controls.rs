@@ -164,7 +164,7 @@ pub async fn player_prices(
     for row in rows {
         let id: String = row.try_get("id")?;
         let gross = prices[&id];
-        let repeat: i64 = row.try_get("repeat_penalty")?;
+        let repeat: i64 = 0; // seen penalty removed
         let hints: i64 = row.try_get("hint_cost")?;
         quotes.push(PlayerPrice {
             id,

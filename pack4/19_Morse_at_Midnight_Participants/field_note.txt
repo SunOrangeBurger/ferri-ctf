@@ -1,0 +1,1 @@
+Short tone=dot, long tone=dash; one-unit gaps separate symbols, three-unit gaps separate letters. A-Z, digits, underscore, braces.

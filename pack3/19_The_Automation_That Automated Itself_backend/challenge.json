@@ -1,0 +1,9 @@
+{
+  "name": "19_The_Automation_That Automated Itself",
+  "title": "The Automation That Automated Itself",
+  "category": "Python / Automation",
+  "difficulty": "Hard",
+  "flag": "nexus{automation_needs_observation}",
+  "method": "Infer a simple substitution from known plaintext and apply it to a second line",
+  "artifact_file": "bot_report.txt"
+}

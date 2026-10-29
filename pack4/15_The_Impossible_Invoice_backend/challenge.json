@@ -1,0 +1,8 @@
+{
+  "id": 15,
+  "title": "The Impossible Invoice",
+  "category": "Data Forensics",
+  "difficulty": "Medium",
+  "flag": "nexus{totals_expose_the_lie}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

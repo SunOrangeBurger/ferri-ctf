@@ -1,0 +1,9 @@
+{
+  "name": "06_Silence_Is_An_Asset",
+  "title": "Silence Is an Asset",
+  "category": "Audio",
+  "difficulty": "Medium",
+  "flag": "nexus{listen_between_beeps}",
+  "method": "Decode Morse from short/long tone durations in a WAV file",
+  "artifact_file": "voicemail.wav"
+}

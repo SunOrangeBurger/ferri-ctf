@@ -59,8 +59,6 @@
       <div>
         {% if c.is_solved %}
           <span class="badge solved">Solved</span>
-        {% elif c.repeat_penalty > 0 %}
-          <span class="hint" style="color:var(--bad);font-size:0.75rem;">-{{ c.repeat_penalty }} repeat penalty</span>
         {% endif %}
         {% if c.has_file %}
           <span title="File attachment available" class="badge secondary" style="margin-left:0.35rem;font-size:0.75rem;">File</span>
@@ -75,8 +73,13 @@
 </div>
 {% else %}
 <div class="card center" style="padding: 2.5rem 1.5rem;">
+  {% if active_round and active_round.is_backlog_round %}
+  <h2>No Backlog Questions Available</h2>
+  <p class="hint">There are no active questions in this backlog set.</p>
+  {% else %}
   <h2>No Challenges in Pool</h2>
   <p class="hint">Your team currently has no challenges assigned for this round.</p>
+  {% endif %}
 </div>
 {% endif %}
 {% if dynamic_scoring %}

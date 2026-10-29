@@ -1,0 +1,3 @@
+09:12:30 operator: deploy started
+09:14:00 operator: the clock was wrong
+09:15:10 operator: rollback requested

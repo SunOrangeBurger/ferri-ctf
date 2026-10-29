@@ -1,0 +1,8 @@
+{
+  "id": 30,
+  "title": "CaughtRedHanded",
+  "category": "Integrity / Human Verification",
+  "difficulty": "Hard",
+  "flag": "nexus{show_your_work_not_just_the_flag}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

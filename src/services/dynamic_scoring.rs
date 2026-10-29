@@ -466,6 +466,11 @@ pub async fn submit(
         tx.commit().await?;
         return Ok("incorrect");
     }
+    if super::honeypots::IDS.contains(&id) {
+        let status = super::honeypots::queue(&mut tx, team, user, id, &at).await?;
+        tx.commit().await?;
+        return Ok(status);
+    }
     let mut gross: i64 = row.try_get("points")?;
     if settings(&mut tx).await?.enabled {
         let difficulty: String = row.try_get("difficulty")?;
@@ -489,7 +494,7 @@ pub async fn submit(
     .bind(id)
     .fetch_one(&mut *tx)
     .await?;
-    let penalty: i64 = row.try_get("repeat_penalty")?;
+    let penalty: i64 = 0; // seen penalty removed
     let awarded = gross
         .saturating_sub(penalty)
         .saturating_sub(hint_cost)

@@ -1,0 +1,2 @@
+Sequence IDs recovered from the ticket queue: 4, 1, 3, 2.
+Map these IDs to the rows in the original export before sorting by UTC timestamp. The intended payload is order_matters.

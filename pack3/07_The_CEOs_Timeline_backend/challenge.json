@@ -1,0 +1,9 @@
+{
+  "name": "07_The_CEOs_Timeline",
+  "title": "The CEO's Timeline",
+  "category": "Log Analysis",
+  "difficulty": "Medium",
+  "flag": "nexus{order_matters}",
+  "method": "Sort event timestamps and extract first letters of event labels",
+  "artifact_file": "events.csv"
+}

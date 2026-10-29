@@ -1,0 +1,9 @@
+{
+  "name": "08_The_Repository_That_Lied",
+  "title": "The Repository That Lied",
+  "category": "Source Code",
+  "difficulty": "Medium",
+  "flag": "nexus{read_the_loop}",
+  "method": "Trace a small Python function and apply its mapping to a list",
+  "artifact_file": "reporter.py"
+}

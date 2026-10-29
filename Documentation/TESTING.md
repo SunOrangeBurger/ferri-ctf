@@ -243,8 +243,8 @@ RESULTS: 44/44 tests PASSED (100.0%)
   - Incorrect attempts incur repeat penalty points.
   - Correct flag awards points, marks solve status, and invalidates scoreboard cache.
 - **Leaderboard (`/scoreboard`, `/api/scoreboard`)**:
-  - Ranks teams by total points descending.
-  - Tie-breaking resolved by earliest last solve timestamp.
+  - Shows pool performance as information; sorts by awarded score and earlier score-reached time.
+  - Ranking uses awarded points descending, then earlier final-score time; exact ties share a rank. Pool size and completion cannot override equal-score time ordering.
   - In-memory cached JSON endpoint for polling.
 - **User Profile (`/profile`)**:
   - Displays user stats, team role, and total solves.

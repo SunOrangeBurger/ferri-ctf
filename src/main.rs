@@ -73,6 +73,20 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Check durable honeypot jobs every second, including overdue jobs on restart.
+    tokio::spawn({
+        let state = state.clone();
+        async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                tick.tick().await;
+                if let Err(e) = services::honeypots::process_due(&state).await {
+                    tracing::error!(error=%e, "delayed penalty processing failed");
+                }
+            }
+        }
+    });
+
     let app = app::build(state.clone());
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     tracing::info!(%bind_addr, "listening");

@@ -1,0 +1,9 @@
+{
+  "name": "01_The_Obvious_Cipher",
+  "title": "The Cipher That Filed a Complaint",
+  "category": "Cryptography",
+  "difficulty": "Easy",
+  "flag": "nexus{rotating_is_not_a_strategy}",
+  "method": "ROT13 followed by reading the decoded sentence's final token",
+  "artifact_file": "complaint.txt"
+}

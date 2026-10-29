@@ -1,0 +1,8 @@
+{
+  "id": 10,
+  "title": "The Last Pixel",
+  "category": "Image Decryption",
+  "difficulty": "Medium",
+  "flag": "nexus{padding_is_not_payload}",
+  "intended_method": "Image pixel extraction with challenge-specific channel/order transform."
+}

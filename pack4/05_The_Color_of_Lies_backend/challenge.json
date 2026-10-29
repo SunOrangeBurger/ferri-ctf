@@ -1,0 +1,8 @@
+{
+  "id": 5,
+  "title": "The Color of Lies",
+  "category": "Image Decryption",
+  "difficulty": "Hard",
+  "flag": "nexus{luminance_is_a_witness}",
+  "intended_method": "Image pixel extraction with challenge-specific channel/order transform."
+}

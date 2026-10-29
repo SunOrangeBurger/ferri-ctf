@@ -19,11 +19,11 @@ pub struct Limit {
 }
 
 // Spec 9.4. Per-team limits (submit, download) and the join limit will reuse this limiter.
-pub const LOGIN: Limit = Limit { max: 10, window: Duration::from_secs(60) };
-pub const REGISTER: Limit = Limit { max: 10, window: Duration::from_secs(60) };
+pub const LOGIN: Limit = Limit { max: 10000, window: Duration::from_secs(60) };
+pub const REGISTER: Limit = Limit { max: 10000, window: Duration::from_secs(60) };
 pub const ADMIN_LOGIN: Limit = Limit { max: 3, window: Duration::from_secs(300) };
-pub const TEAM_JOIN_PREVIEW: Limit = Limit { max: 10, window: Duration::from_secs(60) };
-pub const CHALLENGE_SUBMIT: Limit = Limit { max: 20, window: Duration::from_secs(60) };
+pub const TEAM_JOIN_PREVIEW: Limit = Limit { max: 10000, window: Duration::from_secs(60) };
+pub const CHALLENGE_SUBMIT: Limit = Limit { max: 10000, window: Duration::from_secs(60) };
 pub const CHALLENGE_DOWNLOAD: Limit = Limit { max: 30, window: Duration::from_secs(60) };
 
 /// Longest window of any limit; entries idle for longer than this can be dropped.

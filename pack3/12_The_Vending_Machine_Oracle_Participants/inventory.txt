@@ -1,0 +1,1 @@
+Drawer D inventory label: only_one_drawer_fits

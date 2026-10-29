@@ -11,7 +11,7 @@ Designed for resilience, security, and low operational complexity, FerrisCTF run
 - **Team Management & Onboarding**: Self-service registration, join codes (Crockford Base32), team creation, member management, captain transfer, and automated locking.
 - **Dynamic Challenge Allocation**: Difficulty-based quota pooling per team (`Easy`, `Medium`, `Hard`) ensuring fair challenge distribution.
 - **Secure Flag Verification**: Constant-time HMAC-based flag validation with salt to prevent timing attacks and flag leakage.
-- **Scoring & Real-Time Scoreboard**: Dynamic score tracking, solve history, manual score adjustments, tie-breaking by solve timestamps, and cached JSON scoreboard endpoints.
+- **Scoring & Real-Time Scoreboard**: Points-first ranking with earlier-score tie-breaking, solve history, manual score adjustments, earlier-final-score tie-breaking, and cached JSON scoreboard endpoints.
 - **Optional Live Challenge Prices**: Difficulty-based recovery and solve drops, fixed earned awards, and live Ferris-only scoring controls. Disabled by default; see [Dynamic Scoring](Documentation/DYNAMIC_SCORING.md) for setup, defaults, and behavior.
 - **Multi-Level Role Gate**:
   - **Player**: Solve challenges, request hints, view scoreboards.

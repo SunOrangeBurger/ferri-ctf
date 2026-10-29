@@ -1,11 +1,26 @@
 use rand::seq::SliceRandom;
 use sqlx::SqlitePool;
+use std::collections::HashSet;
 
 use crate::{
     config::DIFFICULTY_SPLIT,
     errors::AppResult,
     models::TeamChallengePool,
 };
+
+async fn opportunity_points(pool: &SqlitePool, challenge_id: &str) -> AppResult<i64> {
+    Ok(sqlx::query_scalar(
+        "SELECT CASE WHEN settings.enabled = 1
+                     THEN rules.maximum_points ELSE c.points END
+         FROM challenges c
+         CROSS JOIN scoring_settings settings
+         LEFT JOIN difficulty_scoring_rules rules ON rules.difficulty = c.difficulty
+         WHERE c.id = ?",
+    )
+    .bind(challenge_id)
+    .fetch_one(pool)
+    .await?)
+}
 
 /// Calculate difficulty quotas (easy, medium, hard) using largest-remainder method.
 /// Ties go to the more common tier (easy > medium > hard).
@@ -56,8 +71,25 @@ pub async fn assign_round_pool(
     team_id: &str,
     round_number: i64,
     pool_size: usize,
-    repeat_penalty_points: i64,
+    _repeat_penalty_points: i64,
 ) -> AppResult<Vec<TeamChallengePool>> {
+    if sqlx::query_scalar::<_, bool>("SELECT is_backlog_round FROM rounds WHERE round_number=?")
+        .bind(round_number).fetch_one(pool).await? {
+        return backlog_round_pool(pool, team_id, round_number).await;
+    }
+    if is_last_round(pool, round_number).await? {
+        return last_round_pool(pool, team_id, round_number).await;
+    }
+    let selective_only: bool = sqlx::query_scalar(
+        "SELECT is_selective_only FROM rounds WHERE round_number = ?",
+    )
+    .bind(round_number)
+    .fetch_one(pool)
+    .await?;
+    if selective_only {
+        return Ok(Vec::new());
+    }
+
     let mut tx = pool.begin().await?;
 
     // Check if team already has pool assigned for this round
@@ -118,27 +150,20 @@ pub async fn assign_round_pool(
     let mut pool_entries = Vec::with_capacity(all_chosen.len());
 
     for cid in all_chosen {
-        // Spec 6.1: repeat penalty is 10 * (earlier appearances of that challenge in this team's pools)
-        let earlier_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM team_challenge_pool
-             WHERE team_id = ? AND challenge_id = ? AND round_number < ?",
-        )
-        .bind(team_id)
-        .bind(&cid)
-        .bind(round_number)
-        .fetch_one(&mut *tx)
-        .await?;
-
-        let penalty = earlier_count * repeat_penalty_points;
+        // Seen/repeat penalty removed
+        let penalty = 0;
+        let opportunity = opportunity_points(pool, &cid).await?;
 
         sqlx::query(
-            "INSERT INTO team_challenge_pool (team_id, round_number, challenge_id, repeat_penalty)
-             VALUES (?, ?, ?, ?)",
+            "INSERT INTO team_challenge_pool
+             (team_id, round_number, challenge_id, repeat_penalty, opportunity_points)
+             VALUES (?, ?, ?, ?, ?)",
         )
         .bind(team_id)
         .bind(round_number)
         .bind(&cid)
         .bind(penalty)
+        .bind(opportunity)
         .execute(&mut *tx)
         .await?;
 
@@ -155,13 +180,21 @@ pub async fn assign_round_pool(
     Ok(pool_entries)
 }
 
-/// Assign 2 randomly-chosen selectives from the round's selective set to a single team.
+/// Assign selectives from the round's selective set to a single team. Normal rounds get
+/// two random choices; selectives-only rounds give every team the complete five-item set.
 /// Selectives always have repeat_penalty = 0 (they are admin-curated, not randomly recurring).
 pub async fn assign_selectives_for_team(
     pool: &SqlitePool,
     team_id: &str,
     round_number: i64,
 ) -> AppResult<Vec<TeamChallengePool>> {
+    if sqlx::query_scalar::<_, bool>("SELECT is_backlog_round FROM rounds WHERE round_number=?")
+        .bind(round_number).fetch_one(pool).await? {
+        return backlog_round_pool(pool, team_id, round_number).await;
+    }
+    if is_last_round(pool, round_number).await? {
+        return last_round_pool(pool, team_id, round_number).await;
+    }
     // Fetch the selective challenge IDs chosen for this round
     let mut selective_ids = sqlx::query_scalar::<_, String>(
         "SELECT challenge_id FROM round_selectives WHERE round_number = ?",
@@ -170,16 +203,59 @@ pub async fn assign_selectives_for_team(
     .fetch_all(pool)
     .await?;
 
+    // If none were manually selected for this round, automatically use active selectives (up to 5)
+    // so selectives are uploaded/assigned regardless of who selects them (2 of 5 selection logic).
+    if selective_ids.is_empty() {
+        selective_ids = sqlx::query_scalar::<_, String>(
+            "SELECT id FROM challenges
+             WHERE is_active = 1 AND is_selective = 1
+             ORDER BY created_at ASC LIMIT 5",
+        )
+        .fetch_all(pool)
+        .await?;
+
+        for sid in &selective_ids {
+            let _ = sqlx::query(
+                "INSERT OR IGNORE INTO round_selectives (round_number, challenge_id) VALUES (?, ?)",
+            )
+            .bind(round_number)
+            .bind(sid)
+            .execute(pool)
+            .await;
+        }
+    }
+
+    let solved: HashSet<String> = sqlx::query_scalar(
+        "SELECT challenge_id FROM solves WHERE team_id = ?",
+    )
+    .bind(team_id)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .collect();
+    selective_ids.retain(|id| !solved.contains(id));
+
     if selective_ids.is_empty() {
         return Ok(Vec::new());
     }
 
-    // Shuffle and pick 2 (or fewer if less than 2 available)
-    {
+    let selective_only: bool = sqlx::query_scalar(
+        "SELECT is_selective_only FROM rounds WHERE round_number = ?",
+    )
+    .bind(round_number)
+    .fetch_one(pool)
+    .await?;
+
+    // Normal rounds randomize the two assigned selectives. A special round preserves
+    // the complete set so all teams see the same five challenges.
+    if !selective_only {
         let mut rng = rand::rngs::OsRng;
         selective_ids.shuffle(&mut rng);
     }
-    let chosen: Vec<String> = selective_ids.into_iter().take(2).collect();
+    let chosen: Vec<String> = selective_ids
+        .into_iter()
+        .take(if selective_only { 5 } else { 2 })
+        .collect();
 
     let mut entries = Vec::with_capacity(chosen.len());
     for cid in chosen {
@@ -199,13 +275,16 @@ pub async fn assign_selectives_for_team(
             continue;
         }
 
+        let opportunity = opportunity_points(pool, &cid).await?;
         sqlx::query(
-            "INSERT INTO team_challenge_pool (team_id, round_number, challenge_id, repeat_penalty)
-             VALUES (?, ?, ?, 0)",
+            "INSERT INTO team_challenge_pool
+             (team_id, round_number, challenge_id, repeat_penalty, opportunity_points)
+             VALUES (?, ?, ?, 0, ?)",
         )
         .bind(team_id)
         .bind(round_number)
         .bind(&cid)
+        .bind(opportunity)
         .execute(pool)
         .await?;
 
@@ -291,5 +370,128 @@ mod tests {
 
         assert!(ids.contains(&"normal-easy"));
         assert!(!ids.contains(&"sel-easy"), "Selective challenges must never be included in standard assign_round_pool");
+
+        sqlx::query(
+            "INSERT INTO solves
+             (team_id, challenge_id, user_id, round_number, points_awarded)
+             VALUES (?, 'normal-easy', ?, 1, 100)",
+        )
+        .bind(&t1.id)
+        .bind(&u1)
+        .execute(&state.db)
+        .await
+        .unwrap();
+        sqlx::query("UPDATE rounds SET ended_at = datetime('now') WHERE round_number = 1")
+            .execute(&state.db)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO rounds (round_number, started_at) VALUES (2, datetime('now'))")
+            .execute(&state.db)
+            .await
+            .unwrap();
+        let next_round = assign_round_pool(&state.db, &t1.id, 2, 5, 10)
+            .await
+            .unwrap();
+        assert!(
+            next_round.iter().all(|e| e.challenge_id != "normal-easy"),
+            "solved standard challenges must not reappear in later rounds"
+        );
     }
+
+    #[tokio::test]
+    async fn selective_assignment_excludes_challenges_the_team_already_solved() {
+        let (state, _dir) = crate::state::test_support::state().await;
+        let user_id = crate::services::auth::register(
+            &state,
+            "selective_player",
+            "Selective Player",
+            "Pass123456",
+        )
+        .await
+        .unwrap();
+        let team = crate::services::team::create_team(
+            &state.db,
+            &user_id,
+            "Selective Team",
+            30,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO challenges
+             (id, title, description, category, difficulty, points, flag_hmac, flag_salt, is_active, is_selective)
+             VALUES ('sel-solved', 'Solved', 'desc', 'Misc', 'easy', 100, 'hmac', 'salt', 1, 1),
+                    ('sel-new', 'New', 'desc', 'Misc', 'easy', 100, 'hmac', 'salt', 1, 1)",
+        )
+        .execute(&state.db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO rounds (round_number, started_at, ended_at) VALUES
+             (1, '2026-10-09 10:00:00.000', '2026-10-09 11:00:00.000'),
+             (2, '2026-10-09 12:00:00.000', NULL)",
+        )
+        .execute(&state.db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO round_selectives (round_number, challenge_id) VALUES
+             (2, 'sel-solved'), (2, 'sel-new')",
+        )
+        .execute(&state.db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO solves
+             (team_id, challenge_id, user_id, round_number, points_awarded, solved_at)
+             VALUES (?, 'sel-solved', ?, 1, 100, '2026-10-09 10:30:00.000')",
+        )
+        .bind(&team.id)
+        .bind(&user_id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+        let assigned = assign_selectives_for_team(&state.db, &team.id, 2)
+            .await
+            .unwrap();
+        assert_eq!(assigned.len(), 1);
+        assert_eq!(assigned[0].challenge_id, "sel-new");
+    }
+}
+
+async fn is_last_round(pool: &SqlitePool, round: i64) -> AppResult<bool> {
+    Ok(sqlx::query_scalar("SELECT is_last_round FROM rounds WHERE round_number=?")
+        .bind(round).fetch_one(pool).await?)
+}
+
+async fn last_round_pool(pool: &SqlitePool, team: &str, round: i64) -> AppResult<Vec<TeamChallengePool>> {
+    sqlx::query("INSERT OR IGNORE INTO team_challenge_pool
+        (team_id,round_number,challenge_id,repeat_penalty,opportunity_points)
+        SELECT t.id,l.round_number,c.id,0,
+          CASE WHEN settings.enabled=1 THEN rules.maximum_points ELSE c.points END
+        FROM teams t CROSS JOIN last_round_challenges l JOIN challenges c ON c.id=l.challenge_id
+        CROSS JOIN scoring_settings settings
+        LEFT JOIN difficulty_scoring_rules rules ON rules.difficulty=c.difficulty
+        WHERE t.id=? AND t.is_locked=1 AND t.disbanded=0 AND l.round_number=? AND c.is_active=1")
+        .bind(team).bind(round).execute(pool).await?;
+    Ok(sqlx::query_as("SELECT team_id,round_number,challenge_id,repeat_penalty,assigned_at
+        FROM team_challenge_pool WHERE team_id=? AND round_number=?")
+        .bind(team).bind(round).fetch_all(pool).await?)
+}
+
+async fn backlog_round_pool(pool: &SqlitePool, team: &str, round: i64) -> AppResult<Vec<TeamChallengePool>> {
+    sqlx::query("INSERT OR IGNORE INTO team_challenge_pool
+        (team_id,round_number,challenge_id,repeat_penalty,opportunity_points)
+        SELECT t.id,l.round_number,c.id,0,
+          CASE WHEN settings.enabled=1 THEN rules.maximum_points ELSE c.points END
+        FROM teams t CROSS JOIN backlog_round_challenges l JOIN challenges c ON c.id=l.challenge_id
+        CROSS JOIN scoring_settings settings
+        LEFT JOIN difficulty_scoring_rules rules ON rules.difficulty=c.difficulty
+        WHERE t.id=? AND t.is_locked=1 AND t.disbanded=0 AND l.round_number=? AND c.is_active=1")
+        .bind(team).bind(round).execute(pool).await?;
+    Ok(sqlx::query_as("SELECT team_id,round_number,challenge_id,repeat_penalty,assigned_at
+        FROM team_challenge_pool WHERE team_id=? AND round_number=?")
+        .bind(team).bind(round).fetch_all(pool).await?)
 }

@@ -128,7 +128,12 @@ This mechanism reduces rewards for rapid sharing of a common flag; it cannot
 detect or prevent flag sharing. Any recovering price can make delayed submission
 attractive. The previous-solver ceiling limits that advantage, and the default
 hard minimum stays above the default medium maximum, before deductions.
-The existing randomized pools still give teams different exposure times.
+Randomized pools can still expose teams to different challenges and prices. The
+leaderboard ranks awarded points descending, then the time the current score was
+reached ascending. Equal points and times share a rank. Performance and completion
+ratios are informational and do not override this ordering. Opportunity values
+remain frozen when assigned; dynamic assignments use the configured difficulty
+maximum as that ceiling.
 
 The migration is additive and seeds static mode on existing databases. Select
 dynamic mode on a fresh event database before round one; a running static event

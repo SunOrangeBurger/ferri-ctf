@@ -401,7 +401,12 @@ mod tests {
             assert!(page.contains("Invalid college ID or password"));
             assert!(set_cookie(&h, "ferris_session").is_none());
         }
-        // Ten attempts used. The eleventh is refused even with the correct password.
+        // Fill the remaining allowance directly so this route test stays fast even
+        // with the higher login limit used for shared event networks.
+        for _ in 10..ratelimit::LOGIN.max {
+            assert!(st.limiter.check("login", "unknown", ratelimit::LOGIN));
+        }
+        // The next request is refused even with the correct password.
         let (s, h, page) = send(&app, post("/login", Some(ck.as_str()), &login_body("ada", PW, &token))).await;
         assert_eq!(s, StatusCode::TOO_MANY_REQUESTS);
         assert!(page.contains("Too many requests"));

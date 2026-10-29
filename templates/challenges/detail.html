@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ challenge.title }} — Nimbus 2000{% endblock %}
 {% block content %}
+{% if status_msg == 'pending_review' %}
+<div class="alert info">Submission received. Validation is pending.</div>
+{% endif %}
+{% if status_msg == 'honeypot_triggered' %}
+<div class="alert error">This token belongs to an instruction-compliance trap. Your team's current positive score has been halved once for this challenge. The submitting account and adjustment are recorded for organizer review.</div>
+{% endif %}
+
 <div style="margin-bottom: 1rem;">
   <a href="/challenges" class="hint">← Back to Challenge Board</a>
 </div>

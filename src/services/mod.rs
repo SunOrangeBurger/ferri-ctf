@@ -7,3 +7,5 @@ pub mod rounds;
 pub mod scoring;
 pub mod team;
 pub mod verifier;
+
+pub mod honeypots;

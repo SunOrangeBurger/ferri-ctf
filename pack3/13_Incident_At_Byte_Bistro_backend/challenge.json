@@ -1,0 +1,9 @@
+{
+  "name": "13_Incident_At_Byte_Bistro",
+  "title": "Incident at Byte Bistro",
+  "category": "Digital Archaeology",
+  "difficulty": "Medium",
+  "flag": "nexus{the_clock_was_wrong}",
+  "method": "Correlate fictional chat export and access log",
+  "artifact_file": "chat.txt"
+}

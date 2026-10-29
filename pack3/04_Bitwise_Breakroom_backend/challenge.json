@@ -1,0 +1,9 @@
+{
+  "name": "04_Bitwise_Breakroom",
+  "title": "Bitwise Breakroom",
+  "category": "Encoding",
+  "difficulty": "Easy",
+  "flag": "nexus{bits_before_biscuits}",
+  "method": "Convert supplied 8-bit binary groups to ASCII",
+  "artifact_file": "machine.log"
+}

@@ -1,0 +1,8 @@
+{
+  "id": 16,
+  "title": "Three Witnesses, One Server",
+  "category": "Incident Response",
+  "difficulty": "Hard",
+  "flag": "nexus{corroborate_independently}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

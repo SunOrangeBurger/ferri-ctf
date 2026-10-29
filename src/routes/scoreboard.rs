@@ -7,6 +7,7 @@ use axum::{
 };
 use minijinja::context;
 use serde_json::json;
+use serde::Serialize;
 
 use crate::{
     errors::AppResult,
@@ -16,12 +17,28 @@ use crate::{
     templates::UserView,
 };
 
+/// Public scoreboard data excludes scores and all solve/performance metadata.
+#[derive(Serialize)]
+struct PublicScoreboardEntry {
+    rank: usize,
+    team_name: String,
+    members: Vec<String>,
+}
+
+fn public_entries(entries: Vec<scoring::ScoreboardEntry>) -> Vec<PublicScoreboardEntry> {
+    entries.into_iter().map(|entry| PublicScoreboardEntry {
+        rank: entry.rank,
+        team_name: entry.team_name,
+        members: entry.members,
+    }).collect()
+}
+
 /// GET /scoreboard — HTML leaderboard
 pub async fn scoreboard_page(
     State(state): State<Arc<AppState>>,
     OptionalUser(user): OptionalUser,
 ) -> AppResult<Response> {
-    let scoreboard = scoring::get_scoreboard(&state).await?;
+    let scoreboard = public_entries(scoring::get_scoreboard(&state).await?);
     let active_round = rounds::get_active_round(&state.db).await?;
     let u_view = user.as_ref().map(UserView::from);
 
@@ -41,7 +58,7 @@ pub async fn scoreboard_page(
 pub async fn scoreboard_json(
     State(state): State<Arc<AppState>>,
 ) -> AppResult<Response> {
-    let scoreboard = scoring::get_scoreboard(&state).await?;
+    let scoreboard = public_entries(scoring::get_scoreboard(&state).await?);
     let active_round = rounds::get_active_round(&state.db).await?;
 
     Ok(Json(json!({

@@ -1,0 +1,6 @@
+Exactly one drawer contains the key. Exactly two statements are true.
+A: key is not in B.
+B: key is in C.
+C: key is not in C.
+D: key is in B.
+Audit reference: test_every_case

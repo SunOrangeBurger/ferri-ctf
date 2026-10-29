@@ -17,7 +17,7 @@ use crate::{
     middleware::{auth::AuthUser, csrf_guard::CsrfCtx},
     ratelimit,
     services::{
-        files as files_svc, hints as hints_svc, rounds, dynamic_scoring,
+        files as files_svc, hints as hints_svc, pool as pool_svc, rounds, dynamic_scoring,
     },
     state::AppState,
     templates::UserView,
@@ -95,6 +95,53 @@ pub async fn challenges_list(
         return Ok(html.into_response());
     };
 
+    // Ensure pool is assigned for this team in this active round (handles late-locking teams)
+    let has_pool: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM team_challenge_pool WHERE team_id = ? AND round_number = ?",
+    )
+    .bind(team_id)
+    .bind(round.round_number)
+    .fetch_one(&state.db)
+    .await?;
+
+    if has_pool == 0 {
+        let _ = pool_svc::assign_round_pool(
+            &state.db,
+            team_id,
+            round.round_number,
+            state.cfg.pool_size_per_team as usize,
+            state.cfg.repeat_penalty_points,
+        )
+        .await;
+        let _ = pool_svc::assign_selectives_for_team(
+            &state.db,
+            team_id,
+            round.round_number,
+        )
+        .await;
+    } else {
+        // Ensure team has 2 selectives assigned for this round
+        let sel_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM team_challenge_pool p
+             JOIN challenges c ON c.id = p.challenge_id
+             WHERE p.team_id = ? AND p.round_number = ? AND c.is_selective = 1",
+        )
+        .bind(team_id)
+        .bind(round.round_number)
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0);
+
+        if sel_count < 2 {
+            let _ = pool_svc::assign_selectives_for_team(
+                &state.db,
+                team_id,
+                round.round_number,
+            )
+            .await;
+        }
+    }
+
     let rows = sqlx::query(
         "SELECT c.id, c.title, c.description, c.category, c.difficulty,
                 c.points AS base_points, p.repeat_penalty,
@@ -130,9 +177,9 @@ pub async fn challenges_list(
         // A challenge can be deleted by the operator between the pool query and
         // the price snapshot. Omit it instead of indexing a missing quote.
         let Some(&base_pts) = price_map.get(&cid) else { continue; };
-        let repeat_penalty: i64 = r.try_get("repeat_penalty")?;
+        let repeat_penalty: i64 = 0; // seen penalty removed
         let hint_cost: i64 = r.try_get("hint_cost")?;
-        let effective = std::cmp::max(0, base_pts - repeat_penalty - hint_cost);
+        let effective = std::cmp::max(0, base_pts - hint_cost);
 
         challenges.push(PooledChallengeCard {
             id: cid,
@@ -212,13 +259,13 @@ pub async fn challenge_detail(
     let base_pts = dynamic_scoring::prices(&mut price_tx, &at).await?.into_iter()
         .find(|p| p.id == challenge_id).ok_or_else(|| AppError::NotFound("Challenge".into()))?.current_points;
     price_tx.commit().await?;
-    let repeat_penalty: i64 = row.try_get("repeat_penalty")?;
+    let repeat_penalty: i64 = 0; // seen penalty removed
     let is_solved: bool = row.try_get("is_solved")?;
     let points_awarded: Option<i64> = row.try_get("points_awarded")?;
 
     let hints = hints_svc::get_hints_for_challenge(&state.db, &challenge_id, team_id).await?;
     let hint_cost = hints_svc::team_hint_cost_for_challenge(&state.db, team_id, &challenge_id).await?;
-    let effective = std::cmp::max(0, base_pts - repeat_penalty - hint_cost);
+    let effective = std::cmp::max(0, base_pts - hint_cost);
 
     let u_view = UserView::from(&user);
     let html = state.templates.render(

@@ -1,0 +1,9 @@
+{
+  "name": "11_CSV_Of_Doom",
+  "title": "CSV of Doom",
+  "category": "Python / Data Reconstruction",
+  "difficulty": "Medium",
+  "flag": "nexus{sort_then_stitch}",
+  "method": "Sort fragments by index and concatenate",
+  "artifact_file": "fragments.csv"
+}

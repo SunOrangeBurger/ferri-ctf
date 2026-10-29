@@ -1,0 +1,1 @@
+Rows are shuffled byte tiles. Use tile_map.json to restore logical byte order; blue LSBs are bits, MSB first.

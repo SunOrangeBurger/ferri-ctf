@@ -1,0 +1,9 @@
+{
+  "name": "12_The_Vending_Machine_Oracle",
+  "title": "The Vending Machine Oracle",
+  "category": "Logic",
+  "difficulty": "Easy",
+  "flag": "nexus{only_one_drawer_fits}",
+  "method": "Use truth table constraints to identify the only valid compartment",
+  "artifact_file": "rules.txt"
+}

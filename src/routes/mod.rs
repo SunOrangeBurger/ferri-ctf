@@ -1,3 +1,5 @@
+pub mod notices;
+pub mod admin_leaderboard;
 pub mod admin;
 pub mod auth;
 pub mod challenges;
@@ -32,6 +34,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/logout", post(auth::logout))
         .route("/scoreboard", get(scoreboard::scoreboard_page))
         .route("/api/scoreboard", get(scoreboard::scoreboard_json))
+        .route("/api/team/notices", get(notices::team_notices))
         .route("/api/challenges/points", get(scoring_controls::player_prices))
         .route("/admin/login", get(auth::admin_login_page).post(auth::admin_login_submit))
 
@@ -43,6 +46,7 @@ pub fn router() -> Router<Arc<AppState>> {
 
         // Team management routes
         .route("/team", get(team::team_dashboard))
+        .route("/team/lock", post(team::lock_team_submit))
         .route("/team/leave", post(team::leave_team_submit))
         .route("/team/kick", post(team::kick_member_submit))
         .route("/team/transfer", post(team::transfer_captain_submit))
@@ -62,21 +66,14 @@ pub fn router() -> Router<Arc<AppState>> {
 
         // Admin-level routes
         .route("/admin/dashboard", get(admin::dashboard))
+        .route("/admin/analytics", get(admin::analytics_page))
+        .route("/admin/api/analytics", get(admin::analytics_json))
         .route("/admin/teams", get(admin::teams_list))
         .route("/admin/teams/:id/action", post(admin::team_action))
         .route("/admin/teams/:id/score", post(admin::adjust_team_score))
         .route("/admin/users/:id/action", post(admin::user_action))
         .route("/admin/export/:kind", get(admin::export_csv))
         .route("/admin/audit", get(admin::audit_log_page))
-
-        // Ferris-level routes
-        .route("/admin/scoring", get(scoring_controls::page).post(scoring_controls::save))
-        .route("/admin/scoring/challenges/:id/points", post(scoring_controls::override_points))
-        .route("/admin/event/start", post(admin::start_event_submit))
-        .route("/admin/rounds", get(admin::rounds_page))
-        .route("/admin/rounds/start", post(admin::start_next_round_submit))
-        .route("/admin/rounds/end", post(admin::end_round_submit))
-        .route("/admin/rounds/limit", post(admin::set_round_limit_submit))
         .route("/admin/challenges", get(admin::challenges_admin_page))
         .route(
             "/admin/challenges/new",
@@ -89,6 +86,18 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/admin/challenges/:id/hints", post(admin::add_hint_submit))
         .route("/admin/hints/:id/edit", post(admin::edit_hint_submit))
         .route("/admin/hints/:id/delete", post(admin::delete_hint_submit))
+
+        // Ferris-level routes
+        .route("/admin/scoring", get(scoring_controls::page).post(scoring_controls::save))
+        .route("/admin/scoring/challenges/:id/points", post(scoring_controls::override_points))
+        .route("/admin/event/start", post(admin::start_event_submit))
+        .route("/admin/leaderboard", get(admin_leaderboard::page))
+        .route("/admin/rounds", get(admin::rounds_page))
+        .route("/admin/rounds/start", post(admin::start_next_round_submit))
+        .route("/admin/rounds/backlog", post(admin::start_backlog_round_submit))
+        .route("/admin/rounds/last", post(admin::start_last_round_submit))
+        .route("/admin/rounds/end", post(admin::end_round_submit))
+        .route("/admin/rounds/limit", post(admin::set_round_limit_submit))
         .route("/admin/admins", get(admin::admins_page))
         .route("/admin/admins/add", post(admin::add_admin_submit))
         .route("/admin/admins/:id/remove", post(admin::remove_admin_submit))

@@ -1,0 +1,9 @@
+{
+  "name": "10_The_Alt_Text_Alibi",
+  "title": "The Alt-Text Alibi",
+  "category": "Web / OSINT",
+  "difficulty": "Easy",
+  "flag": "nexus{look_beyond_the_picture}",
+  "method": "Compare alt text across a local gallery page",
+  "artifact_file": "gallery.html"
+}

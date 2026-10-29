@@ -1,4 +1,5 @@
 pub mod admin_guard;
+pub mod analytics;
 pub mod auth;
 pub mod csrf_guard;
 pub mod response;

@@ -8,6 +8,9 @@ pub struct Round {
     pub time_limit_minutes: Option<i64>,
     pub auto_end_at: Option<String>,
     pub ended_at: Option<String>,
+    pub is_selective_only: bool,
+    pub is_last_round: bool,
+    pub is_backlog_round: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

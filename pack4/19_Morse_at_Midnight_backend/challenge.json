@@ -1,0 +1,8 @@
+{
+  "id": 19,
+  "title": "Morse at Midnight",
+  "category": "Audio / Signal",
+  "difficulty": "Hard",
+  "flag": "nexus{durations_are_data}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

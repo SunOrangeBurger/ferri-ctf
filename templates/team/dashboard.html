@@ -25,6 +25,25 @@
   </div>
 </div>
 
+{% if not team.is_locked and active_round %}
+  <div class="alert info" style="margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+    <div>
+      <strong>Round {{ active_round.round_number }} is currently in progress!</strong>
+      {% if is_captain %}
+        <div class="hint" style="color: inherit; opacity: 0.9;">Lock your team roster now to unlock and start solving challenges.</div>
+      {% else %}
+        <div class="hint" style="color: inherit; opacity: 0.9;">Ask your team captain to lock the roster so your team can access challenges.</div>
+      {% endif %}
+    </div>
+    {% if is_captain %}
+      <form method="post" action="/team/lock" style="margin: 0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" style="margin: 0;" onclick="return confirm('Lock team roster and access challenges? You will not be able to add or remove members after locking.');">Lock Team &amp; Start Challenges →</button>
+      </form>
+    {% endif %}
+  </div>
+{% endif %}
+
 <div class="stat-box">
   <div class="stat">
     <div class="stat-val">{{ total_score }}</div>
@@ -139,7 +158,7 @@
           <th>Difficulty</th>
           <th>Points</th>
           <th>Solved By</th>
-          <th>Time</th>
+          <th>Solved at (IST)</th>
         </tr>
       </thead>
       <tbody>
@@ -150,7 +169,7 @@
           <td><span class="badge {{ s.difficulty }}">{{ s.difficulty }}</span></td>
           <td><strong style="color:var(--green);">+{{ s.points_awarded }}</strong></td>
           <td>{{ s.solver_name }}</td>
-          <td class="hint">{{ s.solved_at }}</td>
+          <td class="hint">{{ s.solved_at | ist_time }}</td>
         </tr>
         {% endfor %}
       </tbody>

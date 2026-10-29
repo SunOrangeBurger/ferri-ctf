@@ -1,0 +1,8 @@
+{
+  "id": 27,
+  "title": "The Very Suspicious README",
+  "category": "Troll / File Forensics",
+  "difficulty": "Medium",
+  "flag": "nexus{read_the_file_not_the_drama}",
+  "intended_method": "Artifact inspection and evidence correlation."
+}

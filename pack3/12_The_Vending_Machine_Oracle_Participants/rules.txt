@@ -1,0 +1,5 @@
+Drawer A: the flag is not in B.
+Drawer B: the flag is in C.
+Drawer C: the flag is not in C.
+Drawer D: the flag is in B.
+Exactly one statement is true. The flag is in the drawer whose statement is true.

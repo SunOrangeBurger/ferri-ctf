@@ -3,7 +3,18 @@ use crate::{
     templates::Templates,
 };
 use sqlx::SqlitePool;
-use std::{sync::Arc, time::Instant};
+use std::{collections::VecDeque, sync::{Arc, RwLock}, time::Instant};
+
+pub const MAX_METRICS_REQUESTS: usize = 10_000;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RequestMetric {
+    pub path: String,
+    pub status: u16,
+    pub duration_ms: u64,
+}
+
+pub type MetricsStore = RwLock<VecDeque<RequestMetric>>;
 
 pub struct AppState {
     pub db: SqlitePool,
@@ -14,6 +25,7 @@ pub struct AppState {
     pub templates: Templates,
     pub started: Instant,
     pub scoreboard_cache: tokio::sync::RwLock<Option<(Instant, Vec<crate::services::scoring::ScoreboardEntry>)>>,
+    pub metrics: MetricsStore,
 }
 
 impl AppState {
@@ -28,6 +40,7 @@ impl AppState {
             templates: Templates::new(),
             started: Instant::now(),
             scoreboard_cache: tokio::sync::RwLock::new(None),
+            metrics: RwLock::new(VecDeque::with_capacity(MAX_METRICS_REQUESTS)),
         })
     }
 }

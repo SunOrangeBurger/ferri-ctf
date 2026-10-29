@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
-use std::{collections::HashMap, time::Instant};
+use std::{cmp::Ordering, collections::HashMap, time::Instant};
 
 use crate::{errors::AppResult, state::AppState};
 
@@ -11,6 +11,11 @@ pub struct ScoreboardEntry {
     pub team_name: String,
     pub members: Vec<String>,
     pub total_score: i64,
+    pub opportunity_points: i64,
+    pub assigned_challenges: i64,
+    pub solved_challenges: i64,
+    pub performance_percent: f64,
+    pub performance_label: String,
     pub hard_solved: i64,
     pub medium_solved: i64,
     pub easy_solved: i64,
@@ -18,6 +23,7 @@ pub struct ScoreboardEntry {
     pub medium_solve_sum: i64,
     pub easy_solve_sum: i64,
     pub reached_score_at: Option<String>,
+    pub reached_score_label: String,
     pub team_created_at: String,
 }
 
@@ -60,9 +66,14 @@ pub async fn reached_score_at(
 }
 
 fn reached_from_events(mut events: Vec<(String, i64)>, final_score: i64) -> Option<String> {
-    if events.is_empty() { return None; }
+    // No events → no timestamp. This is correct for teams with zero final score and
+    // no activity; any team with a non-zero final score must have at least one event.
+    if events.is_empty() {
+        debug_assert_eq!(final_score, 0, "non-zero final_score with empty event history is a data inconsistency");
+        return None;
+    }
 
-    // Chronological order
+    // Chronological order (ISO-8601 / SQLite millisecond format sorts lexicographically)
     events.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut running = 0i64;
@@ -72,17 +83,37 @@ fn reached_from_events(mut events: Vec<(String, i64)>, final_score: i64) -> Opti
         history.push((ts, running));
     }
 
-    // Earliest event after which the running total equals final_score and never changes again
+    // Earliest event after which the running total equals final_score AND stays there.
+    // Zero-point events are already excluded at the query level (points_awarded != 0
+    // and delta != 0), so every entry in history represents a real score change.
     for i in 0..history.len() {
         if history[i..].iter().all(|(_, r)| *r == final_score) {
             return Some(history[i].0.clone());
         }
     }
 
+    // Should be unreachable: the running total after all events must equal final_score
+    // because final_score is computed from the same event rows. Guard against data skew.
+    debug_assert!(false, "reached_from_events: final_score {final_score} was never matched in history");
     None
 }
 
-/// Compute full scoreboard ranking per spec 7.1 - 7.3.
+fn reached_time_cmp(a: &ScoreboardEntry, b: &ScoreboardEntry) -> Ordering {
+    match (&a.reached_score_at, &b.reached_score_at) {
+        (Some(ta), Some(tb)) => ta.cmp(tb),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    }
+}
+
+fn competitive_cmp(a: &ScoreboardEntry, b: &ScoreboardEntry) -> Ordering {
+    b.total_score.cmp(&a.total_score)
+        .then_with(|| reached_time_cmp(a, b))
+}
+
+/// Rank by awarded points, then the earliest time that score was reached.
+/// Pool ratios are informational and cannot override the score/time ordering.
 pub async fn compute_scoreboard(pool: &SqlitePool) -> AppResult<Vec<ScoreboardEntry>> {
     // One snapshot for totals, members and history. Batching also avoids hundreds
     // of pool acquisitions competing with player requests on a cold leaderboard.
@@ -97,6 +128,24 @@ pub async fn compute_scoreboard(pool: &SqlitePool) -> AppResult<Vec<ScoreboardEn
             SELECT team_id, SUM(delta) AS adj_total
             FROM score_adjustments
             GROUP BY team_id
+        ),
+        unique_pool AS (
+            SELECT team_id, challenge_id, MAX(opportunity_points) AS opportunity_points
+            FROM team_challenge_pool
+            GROUP BY team_id, challenge_id
+        ),
+        opportunity AS (
+            SELECT
+                p.team_id,
+                COUNT(*) AS assigned_challenges,
+                SUM(p.opportunity_points) AS opportunity_points
+            FROM unique_pool p
+            JOIN challenges c ON c.id = p.challenge_id
+            WHERE c.is_active = 1 OR EXISTS (
+                SELECT 1 FROM solves s
+                WHERE s.team_id = p.team_id AND s.challenge_id = p.challenge_id
+            )
+            GROUP BY p.team_id
         ),
         agg AS (
             SELECT
@@ -118,6 +167,8 @@ pub async fn compute_scoreboard(pool: &SqlitePool) -> AppResult<Vec<ScoreboardEn
             t.name AS team_name,
             t.created_at AS team_created_at,
             COALESCE(a.solve_points, 0) + COALESCE(adj.adj_total, 0) AS total_score,
+            COALESCE(o.opportunity_points, 0) AS opportunity_points,
+            COALESCE(o.assigned_challenges, 0) AS assigned_challenges,
             COALESCE(a.hard_solved, 0)       AS hard_solved,
             COALESCE(a.medium_solved, 0)     AS medium_solved,
             COALESCE(a.easy_solved, 0)       AS easy_solved,
@@ -127,6 +178,7 @@ pub async fn compute_scoreboard(pool: &SqlitePool) -> AppResult<Vec<ScoreboardEn
         FROM teams t
         LEFT JOIN agg a   ON a.team_id = t.id
         LEFT JOIN adj     ON adj.team_id = t.id
+        LEFT JOIN opportunity o ON o.team_id = t.id
         WHERE t.disbanded = 0 AND t.is_locked = 1",
     )
     .fetch_all(&mut *tx)
@@ -155,6 +207,17 @@ pub async fn compute_scoreboard(pool: &SqlitePool) -> AppResult<Vec<ScoreboardEn
     for r in rows {
         let team_id: String = r.try_get("team_id")?;
         let total_score: i64 = r.try_get("total_score")?;
+        let opportunity_points: i64 = r.try_get("opportunity_points")?;
+        let assigned_challenges: i64 = r.try_get("assigned_challenges")?;
+        let hard_solved: i64 = r.try_get("hard_solved")?;
+        let medium_solved: i64 = r.try_get("medium_solved")?;
+        let easy_solved: i64 = r.try_get("easy_solved")?;
+        let solved_challenges = hard_solved + medium_solved + easy_solved;
+        let performance_percent = if opportunity_points > 0 {
+            total_score as f64 * 100.0 / opportunity_points as f64
+        } else {
+            0.0
+        };
 
         let members = members_by_team.remove(&team_id).unwrap_or_default();
         let reached_at = reached_from_events(events_by_team.remove(&team_id).unwrap_or_default(), total_score);
@@ -165,38 +228,36 @@ pub async fn compute_scoreboard(pool: &SqlitePool) -> AppResult<Vec<ScoreboardEn
             team_name: r.try_get("team_name")?,
             members,
             total_score,
-            hard_solved: r.try_get("hard_solved")?,
-            medium_solved: r.try_get("medium_solved")?,
-            easy_solved: r.try_get("easy_solved")?,
+            opportunity_points,
+            assigned_challenges,
+            solved_challenges,
+            performance_percent,
+            performance_label: format!("{performance_percent:.1}%"),
+            hard_solved,
+            medium_solved,
+            easy_solved,
             hard_solve_sum: r.try_get("hard_solve_sum")?,
             medium_solve_sum: r.try_get("medium_solve_sum")?,
             easy_solve_sum: r.try_get("easy_solve_sum")?,
+            reached_score_label: reached_at.as_deref().map(crate::templates::readable_ist_time).unwrap_or_else(|| "—".into()),
             reached_score_at: reached_at,
             team_created_at: r.try_get("team_created_at")?,
         });
     }
 
-    // Rust sorting for time tie-break and complete rank order
+    // Team identity only stabilizes display order; it never breaks a competitive tie.
     entries.sort_by(|a, b| {
-        b.total_score
-            .cmp(&a.total_score)
-            .then_with(|| b.hard_solved.cmp(&a.hard_solved))
-            .then_with(|| b.medium_solved.cmp(&a.medium_solved))
-            .then_with(|| b.easy_solved.cmp(&a.easy_solved))
-            .then_with(|| a.hard_solve_sum.cmp(&b.hard_solve_sum))
-            .then_with(|| a.medium_solve_sum.cmp(&b.medium_solve_sum))
-            .then_with(|| a.easy_solve_sum.cmp(&b.easy_solve_sum))
-            .then_with(|| match (&a.reached_score_at, &b.reached_score_at) {
-                (Some(ta), Some(tb)) => ta.cmp(tb),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => std::cmp::Ordering::Equal,
-            })
-            .then_with(|| a.team_created_at.cmp(&b.team_created_at))
+        competitive_cmp(a, b)
+            .then_with(|| a.team_name.cmp(&b.team_name))
+            .then_with(|| a.team_id.cmp(&b.team_id))
     });
 
-    for (idx, entry) in entries.iter_mut().enumerate() {
-        entry.rank = idx + 1;
+    for idx in 0..entries.len() {
+        entries[idx].rank = if idx > 0 && competitive_cmp(&entries[idx - 1], &entries[idx]) == Ordering::Equal {
+            entries[idx - 1].rank
+        } else {
+            idx + 1
+        };
     }
 
     Ok(entries)
@@ -302,6 +363,18 @@ mod tests {
         .await
         .unwrap();
 
+        sqlx::query(
+            "INSERT INTO team_challenge_pool
+             (team_id, round_number, challenge_id, assigned_at, opportunity_points) VALUES
+             (?, 1, 'c-hard', '2026-10-09 10:00:00.000', 100),
+             (?, 1, 'c-easy', '2026-10-09 10:00:00.000', 100)",
+        )
+        .bind(&t1.id)
+        .bind(&t2.id)
+        .execute(pool)
+        .await
+        .unwrap();
+
         // t1 solves hard challenge (100 pts)
         sqlx::query(
             "INSERT INTO solves (team_id, challenge_id, user_id, round_number, points_awarded, solved_at)
@@ -326,11 +399,65 @@ mod tests {
 
         let sb = compute_scoreboard(pool).await.unwrap();
         assert_eq!(sb.len(), 2);
-        // Both have 100 points, but t1 has 1 hard solved vs t2 0 hard solved!
-        // Hard countback puts t1 at rank 1!
-        assert_eq!(sb[0].team_id, t1.id);
+        // Equal points: the earlier final score wins.
+        assert_eq!(sb[0].team_id, t2.id);
         assert_eq!(sb[0].rank, 1);
-        assert_eq!(sb[1].team_id, t2.id);
+        assert_eq!(sb[1].team_id, t1.id);
         assert_eq!(sb[1].rank, 2);
+
+        // Reproduce the production inversion: the earlier team has a larger pool
+        // and lower completion. Neither metric may outrank its earlier score time.
+        sqlx::query("INSERT INTO team_challenge_pool
+            (team_id,round_number,challenge_id,opportunity_points) VALUES (?,1,'c-hard',100)")
+            .bind(&t2.id).execute(pool).await.unwrap();
+        let different_pools = compute_scoreboard(pool).await.unwrap();
+        assert_eq!(different_pools[0].team_id, t2.id);
+        assert_eq!(different_pools[0].performance_label, "50.0%");
+        assert_eq!(different_pools[1].performance_label, "100.0%");
+        // Different solve counts are also irrelevant at equal points and time.
+        let mut fewer_solves = different_pools[0].clone();
+        let mut more_solves = different_pools[1].clone();
+        fewer_solves.total_score = 310;
+        more_solves.total_score = 310;
+        fewer_solves.solved_challenges = 5;
+        more_solves.solved_challenges = 7;
+        assert_eq!(competitive_cmp(&fewer_solves, &more_solves), Ordering::Less);
+        more_solves.reached_score_at = fewer_solves.reached_score_at.clone();
+        assert_eq!(competitive_cmp(&fewer_solves, &more_solves), Ordering::Equal);
+        // A team with no score-changing activity sorts after a timed equal score.
+        more_solves.reached_score_at = None;
+        assert_eq!(competitive_cmp(&fewer_solves, &more_solves), Ordering::Less);
+
+        sqlx::query("UPDATE solves SET solved_at = '2026-10-09 11:00:00.000' WHERE team_id = ?")
+            .bind(&t1.id)
+            .execute(pool)
+            .await
+            .unwrap();
+        let tied = compute_scoreboard(pool).await.unwrap();
+        assert_eq!(tied[0].rank, 1);
+        assert_eq!(tied[1].rank, 1, "equal score and time should share rank despite different pool sizes");
+
+        // Higher awarded points rank first, even when the performance ratio is lower.
+        sqlx::query("UPDATE challenges SET points = 1000 WHERE id = 'c-easy'")
+            .execute(pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "UPDATE team_challenge_pool SET opportunity_points = 1000
+             WHERE team_id = ? AND challenge_id = 'c-easy'",
+        )
+        .bind(&t2.id)
+        .execute(pool)
+        .await
+        .unwrap();
+        sqlx::query("UPDATE solves SET points_awarded = 500 WHERE team_id = ?")
+            .bind(&t2.id)
+            .execute(pool)
+            .await
+            .unwrap();
+        let sb = compute_scoreboard(pool).await.unwrap();
+        assert_eq!(sb[0].team_id, t2.id, "500 awarded points must beat 100 points");
+        assert_eq!(sb[0].total_score, 500);
+        assert_eq!(sb[1].total_score, 100);
     }
 }

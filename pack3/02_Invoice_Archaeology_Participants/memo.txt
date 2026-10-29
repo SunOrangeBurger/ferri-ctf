@@ -1,0 +1,2 @@
+Auditor's note: the first letters of the item names are a distraction. The quantity column is A1Z26, but only the companion receipt tape confirms the final phrase.
+receipt_tape=RECEIPTS_TELL_THE_TRUTH

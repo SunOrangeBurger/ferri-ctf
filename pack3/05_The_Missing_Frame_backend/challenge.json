@@ -1,0 +1,9 @@
+{
+  "name": "05_The_Missing_Frame",
+  "title": "The Missing Frame",
+  "category": "Image Forensics",
+  "difficulty": "Medium",
+  "flag": "nexus{pixels_keep_secrets}",
+  "method": "Read pixel RGB values from a generated PNG; blue-channel low bits encode ASCII",
+  "artifact_file": "frame.png"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "20_The_Mystery_Of_Missing_Evidence",
+  "title": "The Mystery of Missing Evidence",
+  "category": "Meta / Mystery",
+  "difficulty": "Unusual",
+  "flag": "nexus{insufficient_evidence_is_an_answer}",
+  "method": "Demonstrate underdetermination; submit the documented meta-flag",
+  "artifact_file": "casefile.txt"
+}
